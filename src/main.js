@@ -4,9 +4,10 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   COLORS, PACK, TRUCK_BED, FRAME_H, FRAME_MATS, HANG, TRAY, mat, glow, box, cyl,
   createMegapack, createRoof, createRobot, createTruck, createAGV, createWorker,
-  createFrame, setFrameMaterial, createCarrier, createModuleTray, createLiftAssist, createYard,
+  createFrame, setFrameMaterial, createCarrier, createModuleTray, createLiftAssist, createFinishedPack, createStraddleCarrier,
   makeSignTexture, makeWallTexture, makeFloorTexture, makePanelTexture, makeLabelTexture,
 } from './models.js';
+import { buildSite, SITE } from './site.js';
 
 // =====================================================================
 // Plant layout & timing
@@ -69,11 +70,11 @@ app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc9d3dd);
-scene.fog = new THREE.Fog(0xc9d3dd, 220, 520);
+scene.fog = new THREE.Fog(0xc9d3dd, 320, 950);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 900);
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 1600);
 camera.position.set(-34, 64, 96);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(6, 0, -8);
@@ -81,14 +82,14 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.maxPolarAngle = Math.PI / 2.05;
 controls.minDistance = 4;
-controls.maxDistance = 300;
+controls.maxDistance = 520;
 
 scene.add(new THREE.HemisphereLight(0xf2f6ff, 0x7d838b, 0.75));
 const sun = new THREE.DirectionalLight(0xfffaf2, 1.8);
-sun.position.set(40, 90, 45);
+sun.position.set(80, 180, 90);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
-Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 70, bottom: -70, near: 10, far: 260 });
+Object.assign(sun.shadow.camera, { left: -210, right: 210, top: 150, bottom: -150, near: 20, far: 520 });
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 scene.add(sun);
@@ -124,16 +125,11 @@ const moduleStock = { count: 30, cap: 56, crates: [] };
 // =====================================================================
 // Factory building
 // =====================================================================
+let site = null;
 const roofGroup = new THREE.Group(); // hidden when the camera rises above the roof
 const bridgeCranes = [];
 
 function buildFactory() {
-  // Asphalt outside, light polished concrete inside the building
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 600), mat(0x7b8086, { roughness: 0.95 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.02;
-  ground.receiveShadow = true;
-  scene.add(ground);
   const floorTex = makeFloorTexture();
   floorTex.repeat.set(24, 9);
   const floor = new THREE.Mesh(
@@ -155,8 +151,8 @@ function buildFactory() {
   stripe(-4, 5.0, 128, 0.16);
   stripe(6, MOD_Z + 3.4, 74, 0.14);
   stripe(66, BIW_Z + 5.6, 64, 0.14);
-  stripe(0, TRUCK_Z - 2.3, 192, 0.18);
-  stripe(0, TRUCK_Z + 2.3, 192, 0.18);
+  // Carrier route from the pickup pad to the south door
+  for (const dx of [-5.6, 5.6]) stripe(PICK_X + dx, (TRUCK_Z + SITE.wallZ) / 2 - 1, 0.16, SITE.wallZ - TRUCK_Z + 2);
   // Red/white hatched no-go zone in front of the shipping crane
   const hatch = mat(COLORS.weldRed, { roughness: 0.7 });
   for (let i = 0; i < 8; i++) stripe(PICK_X - 7 + i * 2, 6.6, 0.9, 1.6, i % 2 ? paint : hatch);
@@ -169,8 +165,7 @@ function buildFactory() {
   buildPaintRail();
   buildFeederDecor();
   buildBridgeCranes();
-  // Finished units staged in the yard outside the east wall, waiting for trucks
-  scene.add(createYard(18, 6, [112, -26]));
+  site = buildSite(scene);
 }
 
 function buildBuilding() {
@@ -240,12 +235,16 @@ function buildBuilding() {
     scene.add(w);
   };
   wall(0, -34.4, 199, 0);
-  wall(0, 34.4, 199, Math.PI);
-  // East and west walls leave an opening for the truck lane
-  for (const [x, rot] of [[-99.5, Math.PI / 2], [99.5, -Math.PI / 2]]) {
-    wall(x, (-34.4 + 12.5) / 2, 12.5 + 34.4, rot);
-    wall(x, (19.5 + 34.4) / 2, 34.4 - 19.5, rot);
-  }
+  // South wall has the straddle-carrier door
+  const d0 = SITE.doorX - SITE.doorHalf;
+  const d1 = SITE.doorX + SITE.doorHalf;
+  wall((-99.5 + d0) / 2, 34.4, d0 + 99.5, Math.PI);
+  wall((d1 + 99.5) / 2, 34.4, 99.5 - d1, Math.PI);
+  const over = new THREE.Mesh(new THREE.PlaneGeometry(d1 - d0, 12.7), wallMat(d1 - d0));
+  over.position.set(SITE.doorX, 6.5 + 6.35, 34.4);
+  over.rotation.y = Math.PI;
+  scene.add(over);
+  for (const [x, rot] of [[-99.5, Math.PI / 2], [99.5, -Math.PI / 2]]) wall(x, 0, 68.8, rot);
   const sign = new THREE.Mesh(
     new THREE.PlaneGeometry(64, 8),
     new THREE.MeshStandardMaterial({ map: makeWallTexture(), roughness: 0.8 }),
@@ -1481,21 +1480,244 @@ const crane = { state: 'idle', z: 0, hookY: 7.5, load: null, group: new THREE.Gr
     return c;
   });
   scene.add(crane.group);
-  const dock = box(16, 0.04, 4.6, mat(0x3b3f45, { roughness: 0.9 }), false);
-  dock.position.set(PICK_X, 0.02, TRUCK_Z);
-  dock.receiveShadow = true;
-  scene.add(dock);
+  // Pickup pad where the crane sets finished packs down for the straddle carriers
+  const pad = box(10.5, 0.04, 3.4, mat(0x3b3f45, { roughness: 0.9 }), false);
+  pad.position.set(PICK_X, 0.02, TRUCK_Z);
+  pad.receiveShadow = true;
+  scene.add(pad);
 }
 
-// Trucks drive through the building in a convoy: queue → dock under crane → depart.
-const TRUCK_SPAWN_X = -125;
-const TRUCK_GAP = 18;
+// =====================================================================
+// Outbound logistics: pickup pad → straddle carriers → storage lot → trucks
+// =====================================================================
+// The crane sets each finished pack on a pad inside the building. Tandem pairs of red
+// straddle carriers take it out through the south door to the storage lot, and later load
+// stored packs onto outbound trucks on the south road. A full lot backs up the pack line.
+const PAD = { x: PICK_X, z: TRUCK_Z, unit: null, claimed: false };
+const LANE_Z = 54; // carrier cross lane between the dock trailers and the lot
+const AISLES = [19, 57, 95]; // carrier aisles through the lot (run north–south)
+const SLOT_OFFSET = 9.5; // aisle centre → slot centre (a carried pack is 8.8 m long)
+const ROW_Z0 = 59;
+const ROW_PITCH = 3.6;
+const ROWS = 10;
+const BAY_X = 70; // trailer centre of the truck being loaded
+const HOLD_X = 28; // the next truck waits here, clear of the carrier aisle
+const TRUCK_START = -300;
+const TRUCK_END = 300;
+const BEAM_GRIP = 1.0; // lift-beam height above the pack's underside when gripping
+const BEAM = { empty: 3.9, carry: BEAM_GRIP + 1.5, ground: BEAM_GRIP, truck: BEAM_GRIP + TRUCK_BED };
+const CARRIER_SPEED = 15; // sim m/s (time is compressed: 1 s = 5 factory minutes)
+
+const slots = [];
+for (const ax of AISLES) {
+  for (const side of [-1, 1]) {
+    for (let r = 0; r < ROWS; r++) {
+      slots.push({ x: ax + side * SLOT_OFFSET, z: ROW_Z0 + r * ROW_PITCH, aisle: ax, unit: null, reserved: false, at: 0 });
+    }
+  }
+}
+// Fill the slots closest to the door first
+slots.sort((a, b) => Math.abs(a.x - SITE.doorX) + a.z * 0.6 - (Math.abs(b.x - SITE.doorX) + b.z * 0.6));
+let yardSerial = 0;
+function storeFinished(slot, id) {
+  const group = createFinishedPack();
+  group.position.set(slot.x, 0, slot.z);
+  scene.add(group);
+  slot.unit = { id, group };
+  slot.at = sim.time - 100 + slot.z;
+}
+
+// Waypoints from a location out to the cross lane; routes are access(from) + reverse(access(to)).
+function access(loc) {
+  switch (loc.type) {
+    case 'pad': return [[PAD.x, PAD.z], [PAD.x, LANE_Z]];
+    case 'door': return [[SITE.doorX, SITE.wallZ + 6], [SITE.doorX, LANE_Z]];
+    case 'slot': return [[loc.slot.x, loc.slot.z], [loc.slot.aisle, loc.slot.z], [loc.slot.aisle, LANE_Z]];
+    case 'aisle': return [[loc.slot.aisle, loc.slot.z], [loc.slot.aisle, LANE_Z]];
+    case 'truck': return [[BAY_X, SITE.roadZ], [SITE.doorX, SITE.roadZ], [SITE.doorX, LANE_Z]];
+    case 'roadside': return [[SITE.doorX, SITE.roadZ], [SITE.doorX, LANE_Z]];
+    default: return [[loc.p[0], loc.p[1]], [loc.p[0], LANE_Z]];
+  }
+}
+function route(from, to) {
+  const a = access(from);
+  const b = access(to).reverse();
+  // Same aisle: skip the trip up to the cross lane
+  if (a.length > 1 && b.length > 1 && a[a.length - 2][0] === b[1][0]) return [...a.slice(0, -1), ...b.slice(1)];
+  return [...a, ...b];
+}
+
+const carriers = [];
+const CARRIER_STAND = [[118, 62], [118, 74], [118, 86]];
+CARRIER_STAND.forEach((stand, i) => {
+  const g = new THREE.Group();
+  const frames = [-1, 1].map((s) => {
+    const c = createStraddleCarrier();
+    c.group.position.x = s * 2.85;
+    c.group.rotation.y = s > 0 ? 0 : Math.PI;
+    g.add(c.group);
+    return c;
+  });
+  scene.add(g);
+  carriers.push({
+    id: `SC-${i * 2 + 1}/${i * 2 + 2}`, g, frames, x: stand[0], z: stand[1], beam: BEAM.empty,
+    load: null, steps: [], stand, loc: { type: 'stand', p: stand }, task: 'Parked',
+  });
+});
+
+function assignJob(c) {
+  // 1) Store: a finished pack is waiting on the pad
+  if (PAD.unit && !PAD.claimed) {
+    const slot = slots.find((s) => !s.unit && !s.reserved);
+    if (slot) {
+      PAD.claimed = true;
+      slot.reserved = true;
+      c.task = 'To pad';
+      c.steps = [
+        { go: route(c.loc, { type: 'pad' }) },
+        { beam: BEAM.ground },
+        { fn: () => { c.load = PAD.unit; PAD.unit = null; c.task = `Storing ${c.load.id}`; } },
+        { beam: BEAM.carry },
+        { go: [[PAD.x, SITE.wallZ + 6]] },
+        { fn: () => { PAD.claimed = false; } }, // pad is free once we are out of the door
+        { go: route({ type: 'door' }, { type: 'slot', slot }) },
+        { beam: BEAM.ground },
+        { fn: () => { slot.unit = c.load; slot.at = sim.time; slot.reserved = false; c.load = null; } },
+        { beam: BEAM.empty },
+        { fn: () => { c.loc = { type: 'slot', slot }; c.task = 'Idle'; } },
+      ];
+      return;
+    }
+  }
+  // 2) Load: a truck is waiting at the loading bay (first in, first out from the lot)
+  const truck = trucks.find((t) => t.state === 'atBay' && !t.claimed);
+  if (truck) {
+    const slot = slots.filter((s) => s.unit && !s.reserved).sort((a, b) => a.at - b.at)[0];
+    if (slot) {
+      truck.claimed = true;
+      slot.reserved = true;
+      c.task = 'To lot';
+      c.steps = [
+        { go: route(c.loc, { type: 'slot', slot }) },
+        { beam: BEAM.ground },
+        { fn: () => { c.load = slot.unit; slot.unit = null; c.task = `Loading ${c.load.id}`; } },
+        { beam: BEAM.carry },
+        { go: [[slot.aisle, slot.z]] },
+        { fn: () => { slot.reserved = false; } },
+        { go: route({ type: 'aisle', slot }, { type: 'truck' }) },
+        { beam: BEAM.truck },
+        { fn: () => { truck.load = c.load; c.load = null; } },
+        { beam: BEAM.empty },
+        { go: [[SITE.doorX, SITE.roadZ]] }, // back off the trailer before it pulls away
+        { fn: () => { truck.state = 'leave'; c.loc = { type: 'roadside' }; c.task = 'Idle'; } },
+      ];
+      return;
+    }
+  }
+  // 3) Nothing to do: return to the stand
+  if (c.loc.type !== 'stand') {
+    c.task = 'Returning';
+    c.steps = [
+      { go: route(c.loc, { type: 'stand', p: c.stand }) },
+      { fn: () => { c.loc = { type: 'stand', p: c.stand }; c.task = 'Parked'; } },
+    ];
+  }
+}
+
+function hasWork() {
+  const free = slots.some((sl) => !sl.unit && !sl.reserved);
+  const stocked = slots.some((sl) => sl.unit && !sl.reserved);
+  return (PAD.unit && !PAD.claimed && free) || (stocked && trucks.some((t) => t.state === 'atBay' && !t.claimed));
+}
+
+function stepCarriers(dt) {
+  for (const c of carriers) {
+    // A carrier heading back to its stand can take new work once it is on the cross lane
+    if (c.task === 'Returning' && Math.abs(c.z - LANE_Z) < 1e-3 && hasWork()) {
+      c.steps = [];
+      c.loc = { type: 'here', p: [c.x, c.z] };
+    }
+    if (!c.steps.length) assignJob(c);
+    const s = c.steps[0];
+    if (s) {
+      if (s.go) {
+        let budget = CARRIER_SPEED * dt;
+        while (budget > 0 && s.go.length) {
+          const [tx, tz] = s.go[0];
+          const dx = tx - c.x;
+          const dz = tz - c.z;
+          const d = Math.hypot(dx, dz);
+          if (d <= budget) {
+            c.x = tx;
+            c.z = tz;
+            budget -= d;
+            s.go.shift();
+          } else {
+            c.x += (dx / d) * budget;
+            c.z += (dz / d) * budget;
+            budget = 0;
+          }
+        }
+        if (!s.go.length) c.steps.shift();
+      } else if (s.beam !== undefined) {
+        const step = 3.2 * dt;
+        c.beam = Math.abs(s.beam - c.beam) <= step ? s.beam : c.beam + Math.sign(s.beam - c.beam) * step;
+        if (c.beam === s.beam) c.steps.shift();
+      } else if (s.fn) {
+        c.steps.shift();
+        s.fn();
+      }
+    }
+    c.g.position.set(c.x, 0, c.z);
+    for (const f of c.frames) f.lift.position.y = c.beam;
+    if (c.load) c.load.group.position.set(c.x, c.beam - BEAM_GRIP, c.z);
+  }
+}
+
 const trucks = [];
-function spawnTruck() {
-  const t = { ...createTruck(), state: 'queue', x: TRUCK_SPAWN_X, load: null };
-  t.group.position.set(t.x, 0, TRUCK_Z);
-  scene.add(t.group);
-  trucks.push(t);
+function stepTrucks(dt) {
+  const last = trucks[trucks.length - 1];
+  if (sim.time >= sim.nextTruck && trucks.length < 4 && (!last || last.x > TRUCK_START + 20)) {
+    const t = { ...createTruck(), state: 'arrive', x: TRUCK_START, load: null, claimed: false, v: 0 };
+    t.group.position.set(t.x, 0, SITE.roadZ);
+    scene.add(t.group);
+    trucks.push(t);
+    // Logistics books trucks against stock: more when the lot is filling, fewer when it is low
+    const stored = slots.filter((sl) => sl.unit).length;
+    const [lo, hi] = stored > 40 ? [8, 12] : stored < 12 ? [17, 24] : [14, 20];
+    sim.nextTruck = sim.time + THREE.MathUtils.randFloat(lo, hi);
+  }
+  const bayBusy = trucks.some((t) => t.state === 'atBay');
+  let ahead = null; // trucks array is ordered front (highest x) to back
+  for (const t of trucks) {
+    if (t.state === 'leave') {
+      t.v = Math.min(16, t.v + 8 * dt);
+      t.x += t.v * dt;
+    } else if (t.state === 'arrive') {
+      let goal = bayBusy ? HOLD_X : BAY_X;
+      if (ahead) goal = Math.min(goal, ahead.x - 18);
+      const v = Math.min(14, Math.max(1.5, (goal - t.x) * 2));
+      t.x = Math.min(goal, t.x + v * dt);
+      if (!bayBusy && t.x >= BAY_X - 1e-3) {
+        t.x = BAY_X;
+        t.state = 'atBay';
+      }
+    }
+    t.group.position.x = t.x;
+    if (t.load) t.load.group.position.set(t.x, TRUCK_BED, SITE.roadZ);
+    ahead = t;
+  }
+  // Shipped: truck has left the site
+  while (trucks.length && trucks[0].x > TRUCK_END) {
+    const t = trucks.shift();
+    scene.remove(t.group);
+    if (t.load) {
+      scene.remove(t.load.group);
+      sim.shipped++;
+      sim.shipTimes.push(sim.time);
+      if (follow.unit === t.load) follow.unit = null;
+    }
+  }
 }
 
 // =====================================================================
@@ -1538,7 +1760,7 @@ const workers = [
 // =====================================================================
 const sim = {
   time: 0, speed: 1, paused: false, faults: true,
-  shipped: 0, tested: 0, firstPass: 0, shipping: [], shipTimes: [],
+  shipped: 0, tested: 0, firstPass: 0, shipTimes: [], doneTimes: [], nextTruck: 2,
 };
 
 function stepSim(dt) {
@@ -1557,6 +1779,7 @@ function stepSim(dt) {
     }
   }
   stepCrane(dt);
+  stepCarriers(dt);
   stepTrucks(dt);
 }
 
@@ -1572,7 +1795,7 @@ function stepCrane(dt) {
   const ySpeed = 4 * dt;
   const toward = (v, target, step) => (Math.abs(target - v) <= step ? target : v + Math.sign(target - v) * step);
   const lineHook = CONV_Y + PACK.HEIGHT + 0.15;
-  const truckHook = TRUCK_BED + PACK.HEIGHT + 0.15;
+  const padHook = PACK.HEIGHT + 0.15;
   const high = 8;
 
   switch (crane.state) {
@@ -1594,38 +1817,39 @@ function stepCrane(dt) {
         crane.load = crane.target;
         crane.load.state = 'lifted';
         MAIN.remove(crane.load);
-        sim.shipping.push(crane.load);
         crane.state = 'lift';
       }
       break;
     case 'lift':
       crane.hookY = toward(crane.hookY, high, ySpeed);
-      if (crane.hookY === high) crane.state = 'waitTruck';
+      if (crane.hookY === high) crane.state = 'waitPad';
       break;
-    case 'waitTruck':
-      crane.truck = trucks.find((t) => t.state === 'docked' && !t.load);
-      if (crane.truck) crane.state = 'traverse';
+    case 'waitPad':
+      // Hold the pack until the pickup pad is clear (a full storage lot backs up the line here)
+      if (!PAD.unit && !PAD.claimed) crane.state = 'traverse';
       break;
     case 'traverse':
       crane.z = toward(crane.z, TRUCK_Z, zSpeed);
-      if (crane.z === TRUCK_Z) crane.state = 'lowerTruck';
+      if (crane.z === TRUCK_Z) crane.state = 'lowerPad';
       break;
-    case 'lowerTruck':
-      crane.hookY = toward(crane.hookY, truckHook, ySpeed);
-      if (crane.hookY === truckHook) {
-        crane.truck.load = crane.load;
-        crane.load.state = 'onTruck';
+    case 'lowerPad':
+      crane.hookY = toward(crane.hookY, padHook, ySpeed);
+      if (crane.hookY === padHook) {
+        // Swap the detailed model for a single-mesh finished pack for the rest of its trip
+        const fin = { id: crane.load.id, group: createFinishedPack() };
+        fin.group.position.set(PAD.x, 0, PAD.z);
+        scene.add(fin.group);
+        scene.remove(crane.load.group);
+        if (follow.unit === crane.load) follow.unit = fin;
+        PAD.unit = fin;
         crane.load = null;
+        sim.doneTimes.push(sim.time);
         crane.state = 'raise';
       }
       break;
     case 'raise':
       crane.hookY = toward(crane.hookY, high, ySpeed);
-      if (crane.hookY === high) {
-        crane.truck.state = 'departing';
-        crane.truck = null;
-        crane.state = 'return';
-      }
+      if (crane.hookY === high) crane.state = 'return';
       break;
     case 'return':
       crane.z = toward(crane.z, 0, zSpeed);
@@ -1634,44 +1858,6 @@ function stepCrane(dt) {
   }
 
   if (crane.load) crane.load.group.position.set(PICK_X, crane.hookY - PACK.HEIGHT - 0.15, crane.z);
-}
-
-function stepTrucks(dt) {
-  const last = trucks[trucks.length - 1];
-  if (trucks.length < 4 && (!last || last.x > TRUCK_SPAWN_X + TRUCK_GAP)) spawnTruck();
-
-  let ahead = null; // trucks array is ordered front (highest x) to back
-  for (const t of trucks) {
-    if (t.state === 'departing') {
-      t.v = Math.min(16, (t.v ?? 0) + 10 * dt);
-      t.x += t.v * dt;
-    } else if (t.state === 'queue') {
-      const limit = ahead ? ahead.x - TRUCK_GAP : Infinity;
-      const goal = Math.min(PICK_X, limit);
-      const v = Math.min(14, Math.max(1.5, (goal - t.x) * 2.5));
-      t.x = Math.min(goal, t.x + v * dt);
-      if (t.x >= PICK_X - 1e-3) {
-        t.x = PICK_X;
-        t.state = 'docked';
-      }
-    }
-    t.group.position.x = t.x;
-    if (t.load) t.load.group.position.set(t.x, TRUCK_BED, TRUCK_Z);
-    ahead = t;
-  }
-
-  // Shipped: truck has left the building
-  while (trucks.length && trucks[0].x > 200) {
-    const t = trucks.shift();
-    scene.remove(t.group);
-    if (t.load) {
-      scene.remove(t.load.group);
-      sim.shipping.splice(sim.shipping.indexOf(t.load), 1);
-      sim.shipped++;
-      sim.shipTimes.push(sim.time);
-      if (follow.unit === t.load) follow.unit = null;
-    }
-  }
 }
 
 // =====================================================================
@@ -1881,6 +2067,7 @@ function updateVisuals(simDt, realDt) {
     }
   }
   roofGroup.visible = camera.position.y < 18;
+  if (!sim.paused) site.update(simDt);
 
   sparks.update(realDt);
   powder.update(realDt);
@@ -1899,6 +2086,8 @@ const CAMERA_PRESETS = {
   biw: { pos: [92, 13, -11], target: [72, 1.5, BIW_Z] },
   paint: { pos: [24, 15, -8], target: [6, 2.5, BIW_Z] },
   shipping: { pos: [34, 16, 40], target: [PICK_X, 3, 8] },
+  lot: { pos: [8, 34, 132], target: [57, 0, 70] },
+  site: { pos: [-90, 250, 330], target: [0, 0, 10] },
 };
 
 // Newest pack that has cleared chassis load (so there is something to look at)
@@ -2095,9 +2284,9 @@ function fmtEnergy(mwh) {
 function updateUI(force = false) {
   uiTimer += 1;
   if (!force && uiTimer % 10) return;
-  const ts = sim.shipTimes.slice(-12);
+  const ts = sim.doneTimes.slice(-12); // packs completed at the end of the line
   const rate = ts.length >= 2 ? (ts.length - 1) / (((ts[ts.length - 1] - ts[0]) * FACTORY_MIN) / 60) : 0;
-  const wip = MAIN.units.length + sim.shipping.filter((u) => u.state === 'lifted').length;
+  const wip = MAIN.units.length + (crane.load ? 1 : 0);
   const framesReady = PC.units.filter((u) => u.next >= PC.stations.length).length;
 
   $('k-clock').textContent = fmtClock(sim.time);
@@ -2111,6 +2300,11 @@ function updateUI(force = false) {
   $('k-modules').textContent = `${moduleStock.count} trays`;
   $('k-modules').dataset.low = moduleStock.count < TRAYS_PER_PACK * 2;
   $('k-frames').textContent = framesReady;
+  const stored = slots.filter((s) => s.unit).length;
+  $('k-lot').textContent = `${stored} / ${slots.length}`;
+  $('k-lot').dataset.low = stored >= slots.length - 4;
+  const waiting = trucks.filter((t) => t.state !== 'leave').length;
+  $('k-trucks').textContent = waiting ? `${waiting} at site` : 'none';
 
   let bottleneck = null;
   for (const st of stations) {
@@ -2175,6 +2369,9 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// Start the shift with part of the storage lot already full
+slots.slice(0, 30).forEach((slot) => storeFinished(slot, `MP-Y${String(++yardSerial).padStart(3, '0')}`));
+
 // Pre-warm so every line is populated on first view (no faults while warming up)
 sim.faults = false;
 for (let i = 0; i < 3200; i++) stepSim(0.1);
@@ -2185,7 +2382,8 @@ for (const st of stations) {
   st.processed = 0;
 }
 for (const line of lines) line.produced = 0;
-Object.assign(sim, { time: 0, shipped: 0, tested: 0, firstPass: 0, shipTimes: [] });
+Object.assign(sim, { time: 0, shipped: 0, tested: 0, firstPass: 0, shipTimes: [], doneTimes: [], nextTruck: Math.max(0, sim.nextTruck - sim.time) });
+slots.forEach((sl) => { sl.at -= 320; });
 updateUI(true);
 frame();
 document.body.classList.add('ready');

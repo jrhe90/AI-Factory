@@ -694,3 +694,206 @@ export function makeLabelTexture(text) {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+// ---------- finished pack as a single textured box (storage lot, trucks) ----------
+// Cheap stand-in for a completed unit: one mesh, door seams and fans painted on.
+let finishedMats = null;
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+function finishedMaterials() {
+  if (finishedMats) return finishedMats;
+  const H = PACK.HEIGHT;
+  const side = canvasTex(1024, 320, (g, w, h) => {
+    g.fillStyle = '#f1f2f3';
+    g.fillRect(0, 0, w, h);
+    const skid = (PACK.BASE / H) * h;
+    const band = ((PACK.ROOF_H + 0.06) / H) * h;
+    g.fillStyle = '#26292e';
+    g.fillRect(0, h - skid, w, skid);
+    g.fillStyle = '#4a4f56';
+    for (let i = 0; i < 6; i++) g.fillRect(i * (w / 6) + 10, 8, w / 6 - 20, band - 16);
+    g.strokeStyle = '#c3c7cc';
+    g.lineWidth = 3;
+    for (let i = 1; i < 8; i++) {
+      g.beginPath();
+      g.moveTo((i * w) / 8, band);
+      g.lineTo((i * w) / 8, h - skid);
+      g.stroke();
+    }
+    g.fillStyle = '#2a2d31';
+    for (let i = 0; i < 8; i++) g.fillRect(((i + 1) * w) / 8 - 22, h * 0.48, 8, 30);
+  });
+  const top = canvasTex(512, 128, (g, w, h) => {
+    g.fillStyle = '#eceeef';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#30343a';
+    for (let i = 0; i < 5; i++) {
+      for (const y of [0.3, 0.7]) {
+        g.beginPath();
+        g.arc(w * (0.16 + i * 0.17), h * y, h * 0.17, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+  });
+  const end = mat(0xeef0f2, { roughness: 0.5 });
+  finishedMats = [
+    end, end,
+    new THREE.MeshStandardMaterial({ map: top, roughness: 0.5 }),
+    mat(COLORS.darker),
+    new THREE.MeshStandardMaterial({ map: side, roughness: 0.5 }),
+    new THREE.MeshStandardMaterial({ map: side, roughness: 0.5 }),
+  ];
+  return finishedMats;
+}
+export function createFinishedPack() {
+  const group = new THREE.Group();
+  const m = new THREE.Mesh(
+    cached('finished', () => new THREE.BoxGeometry(PACK.L + 0.1, PACK.HEIGHT, PACK.W + 0.1)),
+    finishedMaterials(),
+  );
+  m.position.y = PACK.HEIGHT / 2;
+  m.castShadow = m.receiveShadow = true;
+  group.add(m);
+  return group;
+}
+
+// ---------- straddle carrier (red portal-frame carrier with 4 wheels) ----------
+// Two of these work as a tandem pair, one at each end of a Megapack.
+export const CARRIER = { len: 3.2, halfW: 1.85, height: 4.8 };
+export function createStraddleCarrier() {
+  const group = new THREE.Group();
+  const red = mat(0xd3202c, { roughness: 0.45, metalness: 0.25 });
+  const dark = mat(0x1d1f22, { roughness: 0.6 });
+  const { len, halfW, height } = CARRIER;
+  for (const x of [-len / 2 + 0.2, len / 2 - 0.2]) {
+    for (const z of [-halfW, halfW]) {
+      const leg = box(0.32, height - 0.6, 0.32, red);
+      leg.position.set(x, 0.9 + (height - 0.6) / 2 - 0.3, z);
+      group.add(leg);
+      const wheel = cyl(0.45, 0.45, 0.32, 16, dark);
+      wheel.rotation.x = Math.PI / 2;
+      wheel.position.set(x, 0.45, z);
+      group.add(wheel);
+      const hub = cyl(0.18, 0.18, 0.34, 10, mat(COLORS.yellow));
+      hub.rotation.x = Math.PI / 2;
+      hub.position.set(x, 0.45, z);
+      group.add(hub);
+    }
+  }
+  for (const z of [-halfW, halfW]) {
+    for (const y of [height - 0.2, height - 1.5, height - 2.6]) {
+      const rail = box(len, y === height - 0.2 ? 0.34 : 0.16, 0.26, red);
+      rail.position.set(0, y, z);
+      group.add(rail);
+    }
+  }
+  for (const x of [-len / 2 + 0.2, len / 2 - 0.2]) {
+    const cross = box(0.3, 0.34, halfW * 2 + 0.3, red);
+    cross.position.set(x, height - 0.2, 0);
+    group.add(cross);
+  }
+  // Operator controls and engine pod on one leg
+  const pod = box(0.8, 1.0, 0.6, dark);
+  pod.position.set(len / 2 - 0.2, 1.2, halfW + 0.45);
+  group.add(pod);
+  // Lifting beams (move up and down to grip the pack)
+  const lift = new THREE.Group();
+  for (const z of [-1.08, 1.08]) {
+    const beam = box(len - 0.5, 0.18, 0.18, mat(0xb4bac1, { metalness: 0.7, roughness: 0.35 }));
+    beam.position.z = z;
+    lift.add(beam);
+  }
+  group.add(lift);
+  return { group, lift };
+}
+
+// ---------- 53 ft box trailer parked at a dock door ----------
+export function createBoxTrailer() {
+  const g = new THREE.Group();
+  const body = box(2.6, 2.9, 15.6, mat(0xf2f3f4, { roughness: 0.5 }));
+  body.position.set(0, 2.75, 0);
+  g.add(body);
+  const reefer = box(2.2, 1.6, 0.6, mat(0xd9dcdf));
+  reefer.position.set(0, 3.4, -8.05);
+  g.add(reefer);
+  const dark = mat(0x151719, { roughness: 0.8 });
+  for (const z of [6.2, 5.0]) {
+    for (const x of [-1.05, 1.05]) {
+      const w = cyl(0.5, 0.5, 0.4, 14, dark);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(x, 0.5, z);
+      g.add(w);
+    }
+  }
+  const leg = box(0.15, 1.1, 0.15, dark);
+  leg.position.set(0.9, 0.6, -5.5);
+  g.add(leg);
+  const leg2 = leg.clone();
+  leg2.position.x = -0.9;
+  g.add(leg2);
+  return g;
+}
+
+// ---------- small yard vehicles (decor) ----------
+export function createForklift() {
+  const g = new THREE.Group();
+  const orange = mat(0xf07a1a, { roughness: 0.5 });
+  const dark = mat(0x1d1f22);
+  const body = box(2.2, 1.1, 1.2, orange);
+  body.position.y = 0.85;
+  g.add(body);
+  const cage = box(1.0, 1.1, 1.1, dark);
+  cage.position.set(-0.2, 1.95, 0);
+  g.add(cage);
+  const mast = box(0.15, 2.6, 1.0, dark);
+  mast.position.set(1.2, 1.4, 0);
+  g.add(mast);
+  for (const z of [-0.3, 0.3]) {
+    const fork = box(1.1, 0.06, 0.12, mat(0x8d949c, { metalness: 0.7 }));
+    fork.position.set(1.8, 0.15, z);
+    g.add(fork);
+  }
+  for (const x of [-0.7, 0.7]) {
+    for (const z of [-0.6, 0.6]) {
+      const w = cyl(0.3, 0.3, 0.25, 12, dark);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(x, 0.3, z);
+      g.add(w);
+    }
+  }
+  return g;
+}
+export function createScissorLift() {
+  const g = new THREE.Group();
+  const yellow = mat(0xf2b31a, { roughness: 0.5 });
+  const base = box(2.3, 0.6, 1.1, yellow);
+  base.position.y = 0.45;
+  g.add(base);
+  const scissor = box(2.0, 0.6, 0.9, mat(0x2b2f35));
+  scissor.position.y = 1.05;
+  g.add(scissor);
+  const deck = box(2.4, 0.12, 1.2, yellow);
+  deck.position.y = 1.4;
+  g.add(deck);
+  for (const z of [-0.55, 0.55]) {
+    const rail = box(2.4, 0.06, 0.06, yellow);
+    rail.position.set(0, 2.45, z);
+    g.add(rail);
+  }
+  for (const x of [-1.15, 1.15]) {
+    for (const z of [-0.55, 0.55]) {
+      const p = box(0.06, 1.05, 0.06, yellow);
+      p.position.set(x, 1.95, z);
+      g.add(p);
+    }
+  }
+  return g;
+}

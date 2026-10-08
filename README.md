@@ -25,7 +25,9 @@ makes the ones before it wait (**Blocked**). Lines hand units to each other, so 
 works its way through the plant.
 
 ```
-Body in White ──► Powder Coat (overhead conveyor) ──► Pack line ──► Shipping crane ──► Trucks
+Body in White ──► Powder Coat (overhead conveyor) ──► Pack line ──► Crane ──► Pickup pad
+                                                                                  │ straddle carriers
+                                                       Outbound trucks ◄── Storage lot ◄┘
                                                          ▲
 Battery Modules ──► Rack warehouse ──► AGVs ─────────────┘ (4 trays per pack)
 ```
@@ -95,7 +97,29 @@ station takes 4 trays (48 modules) per pack and is starved if stock runs out.
 | 07 | End-of-Line Test | Scanner sweeps the pack; ~6% fail and are re-tested |
 | 08 | Final QA | Inspection arch, release to shipping |
 
-A gantry crane then lifts each finished pack onto a flatbed truck in a drive-through convoy.
+A gantry crane then sets each finished pack on a pickup pad inside the building.
+
+### Site, storage lot and outbound logistics
+
+The site layout follows the MFTX aerial view:
+
+- **North:** employee parking along the boulevard, with passing traffic.
+- **West:** an office block, a second parking lot and a fenced substation yard.
+- **South:** dock doors along the wall, with drop trailers backed in, and a large concrete court
+  that holds the **Megapack storage lot**.
+
+Finished packs move like this:
+
+1. **Three tandem pairs of red straddle carriers** (six machines, styled on the units in the site
+   photos) pick each pack up from the pad and carry it out through the south door. They drive
+   crab-style down the lot's aisles and set it in a free slot (60 slots).
+2. **Outbound flatbed trucks** arrive on the south road and stop at the loading bay. A carrier pair
+   brings the oldest stored pack and lowers it onto the trailer, and the truck leaves. A pack counts
+   as shipped when its truck leaves the site.
+3. **Truck bookings follow stock:** more trucks come when the lot is above 40 packs, fewer when it
+   drops below 12.
+
+If the lot fills up, the pad stays occupied, the crane has to wait and the pack line backs up.
 
 **Time scale**: 1 simulated second = 5 factory minutes. The pack line's End-of-Line test is the
 plant bottleneck, giving a takt of about 68 minutes per pack, the figure quoted in the Megafactory
@@ -109,7 +133,7 @@ their buffers and then wait.
   inject or clear a fault from there
 - **Space** — pause / resume
 - **½× … 8×** — simulation speed
-- **Camera presets** — Overview, Follow pack, Module line, Body in White, Powder coat, Shipping
+- **Camera presets** — Overview, Follow pack (follows a pack all the way onto its truck), Module line, Body in White, Powder coat, Crane, Storage lot, Site
 - **Line tabs** in the station panel switch between the four lines; a red dot marks a line with a fault
 - **Random faults** — toggle random station breakdowns
 
@@ -120,7 +144,8 @@ their buffers and then wait.
 ```
 index.html       HUD markup + import map (three.js from jsDelivr)
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
-src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, lift-assist, truck, AGV, worker, yard
+src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping
+src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, lift-assist, truck, AGV, worker, straddle carrier, trailer, yard vehicles
 src/style.css    HUD styles
 ```
 
