@@ -104,6 +104,10 @@ A gantry crane then sets each finished pack on a pickup pad inside the building.
 The site layout follows the MFTX aerial view:
 
 - **North:** employee parking along the boulevard, with passing traffic.
+- **Cars** are low-poly Model Y and Model 3 shapes in factory paint colours. The Model Y has the
+  full-width light bar and black cladding; the Model 3 has slim swept headlights. Employees drive in,
+  park nose-in, back out and leave. How full the lots are follows the factory clock: they fill up for
+  the 6 AM day shift and thin out after 6 PM, with visitors coming and going in between.
 - **West:** an office block, a second parking lot and a fenced substation yard.
 - **South:** dock doors along the wall, with drop trailers backed in, and a large concrete court
   that holds the **Megapack storage lot**.
@@ -133,7 +137,7 @@ their buffers and then wait.
   inject or clear a fault from there
 - **Space** — pause / resume
 - **½× … 8×** — simulation speed
-- **Camera presets** — Overview, Follow pack (follows a pack all the way onto its truck), Module line, Body in White, Powder coat, Crane, Storage lot, Site
+- **Camera presets** — Overview, Follow pack (follows a pack all the way onto its truck), Module line, Body in White, Powder coat, Crane, Storage lot, Parking, Site
 - **Line tabs** in the station panel switch between the four lines; a red dot marks a line with a fault
 - **Random faults** — toggle random station breakdowns
 
@@ -144,6 +148,7 @@ their buffers and then wait.
 ```
 index.html       HUD markup + import map (three.js from jsDelivr)
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
+src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
 src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping
 src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, lift-assist, truck, AGV, worker, straddle carrier, trailer, yard vehicles
 src/style.css    HUD styles

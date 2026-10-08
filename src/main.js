@@ -2067,7 +2067,7 @@ function updateVisuals(simDt, realDt) {
     }
   }
   roofGroup.visible = camera.position.y < 18;
-  if (!sim.paused) site.update(simDt);
+  if (!sim.paused) site.update(simDt, ((sim.time * FACTORY_MIN) / 60 + 6) % 24);
 
   sparks.update(realDt);
   powder.update(realDt);
@@ -2088,6 +2088,7 @@ const CAMERA_PRESETS = {
   shipping: { pos: [34, 16, 40], target: [PICK_X, 3, 8] },
   lot: { pos: [8, 34, 132], target: [57, 0, 70] },
   site: { pos: [-90, 250, 330], target: [0, 0, 10] },
+  parking: { pos: [-196, 20, 34], target: [-158, 0, -14] },
 };
 
 // Newest pack that has cleared chassis load (so there is something to look at)
@@ -2387,4 +2388,4 @@ slots.forEach((sl) => { sl.at -= 320; });
 updateUI(true);
 frame();
 document.body.classList.add('ready');
-window.megafactory = { sim, lines, stations, moduleStock }; // handy for poking at from the console
+window.megafactory = { sim, lines, stations, moduleStock, site }; // handy for poking at from the console

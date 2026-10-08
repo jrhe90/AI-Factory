@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import {
   COLORS, mat, box, cyl, glow, createBoxTrailer, createForklift, createScissorLift,
 } from './models.js';
+import { CarTraffic } from './cars.js';
 
 export const SITE = {
   doorX: 57, // south door used by the straddle carriers
@@ -95,10 +96,9 @@ function road(scene, x0, x1, z, width) {
   }
 }
 
-// Parking lot: rows of stalls along local x, cars nose-in along local z.
-// `rows` are the local z centres of each stall row; returns a group to position/rotate.
-const CAR_COLORS = [0xf2f2f2, 0xf2f2f2, 0x1a1c1f, 0x1a1c1f, 0x9aa0a6, 0x6b7076, 0xb11f24, 0x1f4fa8, 0xc8ccd0];
-function parkingLot(len, depth, rows, occupancy, rand) {
+// Parking lot surface and stall lines; stalls run along local x in rows at local z.
+// Returns the group (to position/rotate) and the stall centres for the car traffic.
+function parkingLot(len, depth, rows) {
   const g = new THREE.Group();
   const lot = new THREE.Mesh(new THREE.PlaneGeometry(len, depth), asphalt(len, depth));
   lot.rotation.x = -Math.PI / 2;
@@ -109,28 +109,17 @@ function parkingLot(len, depth, rows, occupancy, rand) {
   const stallD = 5.4;
   const perRow = Math.floor((len - 4) / stallW);
   const lines = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.02, stallD), mat(0xf4f4f4), rows.length * (perRow + 1));
-  const cars = [];
+  const stalls = [];
   let li = 0;
-  rows.forEach((rz) => {
+  rows.forEach(({ z: rz, aisle }) => {
     for (let i = 0; i <= perRow; i++) {
       const x = -len / 2 + 2 + i * stallW;
       lines.setMatrixAt(li++, m4.makeTranslation(x, 0.025, rz));
-      if (i < perRow && rand() < occupancy) cars.push([x + stallW / 2, rz]);
+      if (i < perRow) stalls.push({ lx: x + stallW / 2, lz: rz, aisle });
     }
   });
   g.add(lines);
-  const body = new THREE.InstancedMesh(new THREE.BoxGeometry(1.85, 0.75, 4.4), new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.4 }), cars.length);
-  const cabin = new THREE.InstancedMesh(new THREE.BoxGeometry(1.65, 0.62, 2.3), mat(0x1d2733, { roughness: 0.2, metalness: 0.6 }), cars.length);
-  const color = new THREE.Color();
-  cars.forEach(([x, z], i) => {
-    const jitter = (rand() - 0.5) * 0.3;
-    body.setMatrixAt(i, m4.makeTranslation(x + jitter, 0.62, z));
-    cabin.setMatrixAt(i, m4.makeTranslation(x + jitter, 1.3, z + 0.2));
-    body.setColorAt(i, color.setHex(CAR_COLORS[Math.floor(rand() * CAR_COLORS.length)]));
-  });
-  body.castShadow = cabin.castShadow = true;
-  g.add(body, cabin);
-  return g;
+  return { group: g, stalls };
 }
 
 function trees(scene, positions) {
@@ -237,13 +226,16 @@ export function buildSite(scene) {
   flat(scene, -184, -176, -72, 96, asphalt(8, 168), 0.008); // west service road
 
   // Employee parking: north strip along the boulevard, and a big lot west of the office
-  const north = parkingLot(200, 26, [-6.8, 6.8], 0.72, rand);
-  north.position.set(6, 0, -59);
-  scene.add(north);
-  const west = parkingLot(76, 52, [-19.5, -6.5, 6.5, 19.5], 0.78, rand);
-  west.rotation.y = Math.PI / 2;
-  west.position.set(-148, 0, -6);
-  scene.add(west);
+  // Stalls face a shared drive aisle; driveways sit at the lot ends
+  const north = parkingLot(200, 26, [{ z: -6.8, aisle: 0 }, { z: 6.8, aisle: 0 }]);
+  north.group.position.set(6, 0, -59);
+  scene.add(north.group);
+  const west = parkingLot(76, 52, [
+    { z: -19.5, aisle: -13 }, { z: -6.5, aisle: -13 }, { z: 6.5, aisle: 13 }, { z: 19.5, aisle: 13 },
+  ]);
+  west.group.rotation.y = Math.PI / 2;
+  west.group.position.set(-148, 0, -6);
+  scene.add(west.group);
 
   // Office block next to the west parking (the "briefcase" building on the map)
   const office = new THREE.Group();
@@ -343,30 +335,51 @@ export function buildSite(scene) {
   fence(scene, -112, SITE.roadZ - 4.6, 20, SITE.roadZ - 4.6);
   fence(scene, 105, SITE.roadZ - 4.6, 124, SITE.roadZ - 4.6);
 
-  // Traffic on the boulevard
-  const traffic = [];
-  for (let i = 0; i < 10; i++) {
-    const car = new THREE.Group();
-    const color = CAR_COLORS[i % CAR_COLORS.length];
-    const b = box(4.4, 0.75, 1.85, mat(color, { roughness: 0.35, metalness: 0.4 }));
-    b.position.y = 0.62;
-    car.add(b);
-    const c = box(2.3, 0.62, 1.65, mat(0x1d2733, { roughness: 0.2, metalness: 0.6 }));
-    c.position.set(-0.2, 1.3, 0);
-    car.add(c);
+  // Employee cars drive in from the boulevard / west road, park nose-in, back out and leave
+  const toWorld = (lot) => {
+    lot.group.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
+    return (lx, lz) => {
+      v.set(lx, 0, lz).applyMatrix4(lot.group.matrixWorld);
+      return [v.x, v.z];
+    };
+  };
+  const eastLane = SITE.blvdZ + 2.4; // eastbound
+  const westLane = SITE.blvdZ - 2.4; // westbound
+  const northLot = (entryX) => {
+    const mx = 6 + entryX;
+    return {
+      toWorld: toWorld(north),
+      stalls: north.stalls.filter((st) => Math.sign(st.lx) === Math.sign(entryX)),
+      entryX,
+      arrive: [[mx - 110, eastLane], [mx, eastLane], [mx, -72]],
+      depart: [[mx, -72], [mx, westLane], [mx - 110, westLane]],
+      maxMoving: 9,
+    };
+  };
+  const lots = [
+    northLot(98.5),
+    northLot(-98.5),
+    {
+      toWorld: toWorld(west),
+      stalls: west.stalls,
+      entryX: 36.5,
+      arrive: [[-177.6, 70], [-177.6, -42.5], [-174, -42.5]],
+      depart: [[-174, -42.5], [-182.4, -42.5], [-182.4, 70]],
+      maxMoving: 12,
+    },
+  ];
+  const through = [];
+  for (let i = 0; i < 12; i++) {
     const dir = i % 2 ? 1 : -1;
-    car.position.set(-400 + rand() * 800, 0, SITE.blvdZ + dir * 2.4);
-    car.rotation.y = dir > 0 ? 0 : Math.PI;
-    scene.add(car);
-    traffic.push({ car, dir, v: 11 + rand() * 6 });
+    through.push({ x0: -420, x1: 420, z: dir > 0 ? eastLane : westLane, dir, v: 12 + rand() * 6 });
   }
+  const cars = new CarTraffic(scene, lots, through, rand, 6);
+
   return {
-    update(dt) {
-      for (const t of traffic) {
-        t.car.position.x += t.dir * t.v * dt;
-        if (t.car.position.x > 420) t.car.position.x = -420;
-        if (t.car.position.x < -420) t.car.position.x = 420;
-      }
+    cars,
+    update(dt, hour) {
+      cars.update(dt, hour);
     },
   };
 }
