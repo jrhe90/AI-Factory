@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Megafactory Line Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="./src/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="loading">Building factory…</div>
+
+  <header class="panel" id="brand">
+    <div class="brand-mark"></div>
+    <div>
+      <h1>Megafactory <span>Line 1</span></h1>
+      <p>Utility-scale battery production · live simulation</p>
+    </div>
+  </header>
+
+  <section class="panel" id="kpis">
+    <div class="kpi wide"><label>Factory clock</label><b id="k-clock">—</b></div>
+    <div class="kpi"><label>Packs shipped</label><b id="k-shipped">0</b></div>
+    <div class="kpi"><label>Energy shipped</label><b id="k-energy">0</b></div>
+    <div class="kpi"><label>Packs / hour</label><b id="k-rate">—</b></div>
+    <div class="kpi"><label>Run-rate</label><b id="k-annual">—</b></div>
+    <div class="kpi"><label>Work in progress</label><b id="k-wip">0</b></div>
+    <div class="kpi"><label>First-pass yield</label><b id="k-fpy">—</b></div>
+    <div class="kpi wide"><label>Bottleneck</label><b id="k-bottleneck">—</b></div>
+  </section>
+
+  <aside class="panel" id="stations">
+    <div class="panel-head">
+      <h2>Stations</h2>
+      <div class="legend">
+        <span data-status="working"><i class="dot"></i>Working</span>
+        <span data-status="blocked"><i class="dot"></i>Blocked</span>
+        <span data-status="idle"><i class="dot"></i>Starved</span>
+        <span data-status="down"><i class="dot"></i>Fault</span>
+      </div>
+    </div>
+    <div id="station-list"></div>
+  </aside>
+
+  <section class="panel" id="info" hidden>
+    <button id="info-close" aria-label="Close">×</button>
+    <small id="info-num"></small>
+    <h3 id="info-name"></h3>
+    <p id="info-desc"></p>
+    <dl>
+      <div><dt>Status</dt><dd><span class="pill" id="info-status"></span></dd></div>
+      <div><dt>Cycle time</dt><dd id="info-cycle"></dd></div>
+      <div><dt>Processed</dt><dd id="info-done"></dd></div>
+      <div><dt>Utilization</dt><dd id="info-util"></dd></div>
+      <div><dt>Downtime</dt><dd id="info-down"></dd></div>
+      <div><dt>Current pack</dt><dd id="info-unit"></dd></div>
+    </dl>
+    <button id="info-fault" class="btn danger">Inject fault</button>
+  </section>
+
+  <nav class="panel" id="controls">
+    <div class="group">
+      <button id="play" class="btn">❚❚ Pause</button>
+      <span class="sep"></span>
+      <button class="btn" data-speed="0.5">½×</button>
+      <button class="btn active" data-speed="1">1×</button>
+      <button class="btn" data-speed="2">2×</button>
+      <button class="btn" data-speed="4">4×</button>
+      <button class="btn" data-speed="8">8×</button>
+    </div>
+    <div class="group">
+      <button class="btn active" data-cam="overview">Overview</button>
+      <button class="btn" data-cam="follow">Follow pack</button>
+      <button class="btn" data-cam="modules">Module bay</button>
+      <button class="btn" data-cam="test">Test bay</button>
+      <button class="btn" data-cam="shipping">Shipping</button>
+    </div>
+    <div class="group">
+      <label class="toggle"><input type="checkbox" id="faults" checked /> Random faults</label>
+      <button class="btn" id="panel-toggle">Stations</button>
+    </div>
+  </nav>
+
+  <div id="toasts"></div>
+  <div id="hint">Drag to orbit · scroll to zoom · click a station for details · Space to pause</div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
