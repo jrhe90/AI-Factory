@@ -27,8 +27,27 @@ works its way through the plant.
 ```
 Body in White ──► Powder Coat (overhead conveyor) ──► Pack line ──► Shipping crane ──► Trucks
                                                          ▲
-Battery Modules ──► Rack warehouse ──► AGVs ─────────────┘ (3 trays per pack)
+Battery Modules ──► Rack warehouse ──► AGVs ─────────────┘ (4 trays per pack)
 ```
+
+### Modelled on the Lathrop Megafactory video
+
+The look and process details follow Tesla's *Meet Megafactory* video of the Lathrop, CA plant:
+
+- Bright white building with a white column grid (with grid labels like G13), polished concrete floor,
+  open steel roof joists and dense LED high-bays. The roof hides when you orbit above it.
+- Yellow 6-axis robots. Body-in-White welding happens inside red translucent welding-curtain cells
+  with red fixtures and welders. Yellow bridge cranes with blue hoists run over the pack line and BIW.
+- Paint shop on a blue overhead conveyor: a stainless wash tunnel with nozzle risers spraying water,
+  and a booth lit by tall light panels.
+- On the pack line, packs ride low floor rails and the work is mostly manual. Technicians build an
+  orange HV busbar spine first; operators then use lift-assist arms to slide orange-faced modules
+  in from both sides. Doors swing shut as they're hung, and the thermal roof has two rows of fans
+  and side louvres.
+- The module line has silver aluminium guarding and light curtains, and a robot with a red gripper
+  places the green BMS boards.
+- Takt is calibrated to the video's "1 Megapack every 68 minutes". Finished units are staged in a yard
+  outside the east wall.
 
 ### Body in White (back of plant)
 | # | Station | What happens |
@@ -54,33 +73,33 @@ Frames waiting on the rail act as the buffer.
 | # | Station | What happens |
 |---|---------|--------------|
 | 01 | Cell Intake & Test | Cells are scanned and tested; a tray is indexed onto the line |
-| 02 | Cell Insertion | 144 cells loaded into six module carriers |
+| 02 | Cell Insertion | 144 cells loaded into twelve module carriers |
 | 03 | Interconnect Weld | Laser welding to copper collector plates (sparks) |
 | 04 | Adhesive & Potting | Dispensing head fills the gaps with potting compound |
-| 05 | Module Enclosure | Lids and sense boards fitted |
+| 05 | Module Lid & BMS Board | Robot with a red gripper places lids and green BMS boards |
 | 06 | Module EOL Test | Isolation and BMS checks; ~3% re-tested |
 
-Finished trays go into the rack warehouse. Each crate on the racks is one tray in stock, up to 56.
-When the racks are full the module line backs up. The pack line's Module Install station takes
-3 trays (18 modules) per pack and is starved if stock runs out.
+Finished trays (12 modules each) go into the rack warehouse. Each crate on the racks is one tray in
+stock, up to 56. When the racks are full the module line backs up. The pack line's Module Install
+station takes 4 trays (48 modules) per pack and is starved if stock runs out.
 
 ### Pack line
 | # | Station | What happens |
 |---|---------|--------------|
 | 01 | Chassis Load | Coated frame is lowered off the paint rail onto a steel skid |
-| 02 | Module Install | AGVs bring trays; two robots load 18 modules |
-| 03 | Busbar & HV Wiring | Robots weld copper busbars (sparks) |
+| 02 | HV Busbar & Harness | Technicians build the orange HV busbar spine down the centre |
+| 03 | Module Install | AGVs bring trays; lift-assist arms slide 48 modules in from both sides |
 | 04 | Thermal & Inverter | Hoist sets the thermal roof with fans and power electronics |
-| 05 | Enclosure & Doors | Doors and end caps are fitted and welded |
+| 05 | Enclosure & Doors | 16 doors are hung and swing shut, then the end caps go on |
 | 06 | Coolant Fill | Hose drops in, coolant loop is filled and leak-checked |
 | 07 | End-of-Line Test | Scanner sweeps the pack; ~6% fail and are re-tested |
 | 08 | Final QA | Inspection arch, release to shipping |
 
 A gantry crane then lifts each finished pack onto a flatbed truck in a drive-through convoy.
 
-**Time scale**: 1 simulated second = 4 factory minutes. The pack line's End-of-Line test is the
-plant bottleneck, at roughly 1.1 packs/hour. At ~3.9 MWh per pack that is a ~35–40 GWh/year
-run-rate, the same order as the real factory. The feeder lines run a little faster, so they fill
+**Time scale**: 1 simulated second = 5 factory minutes. The pack line's End-of-Line test is the
+plant bottleneck, giving a takt of about 68 minutes per pack, the figure quoted in the Megafactory
+video. At ~3.9 MWh per pack that is roughly a 30 GWh/year run-rate before downtime. The feeder lines run a little faster, so they fill
 their buffers and then wait.
 
 ## Controls
@@ -101,7 +120,7 @@ their buffers and then wait.
 ```
 index.html       HUD markup + import map (three.js from jsDelivr)
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
-src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, truck, AGV, worker
+src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, lift-assist, truck, AGV, worker, yard
 src/style.css    HUD styles
 ```
 

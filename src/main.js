@@ -4,24 +4,25 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   COLORS, PACK, TRUCK_BED, FRAME_H, FRAME_MATS, HANG, TRAY, mat, glow, box, cyl,
   createMegapack, createRoof, createRobot, createTruck, createAGV, createWorker,
-  createFrame, setFrameMaterial, createCarrier, createModuleTray,
-  makeSignTexture, makeWallTexture, makeFloorTexture,
+  createFrame, setFrameMaterial, createCarrier, createModuleTray, createLiftAssist, createYard,
+  makeSignTexture, makeWallTexture, makeFloorTexture, makePanelTexture, makeLabelTexture,
 } from './models.js';
 
 // =====================================================================
 // Plant layout & timing
 // =====================================================================
 // Simulation time is in "sim seconds"; one sim second = FACTORY_MIN factory minutes.
-// The pack line's End-of-Line test (~10 s + ~3.5 s transfer) paces the plant at
-// roughly 1.1 packs/hour, i.e. a ~40 GWh/year run-rate. The feeder lines
-// (Body in White, Powder Coat, Battery Modules) are sized to run slightly faster,
-// so they fill their buffers and then block, as real feeder lines do.
-const FACTORY_MIN = 4;
+// The pack line's End-of-Line test (~10 s + ~3.5 s transfer) paces the plant at about
+// one pack every 68 minutes, the rate Tesla quotes for the Lathrop Megafactory. The
+// feeder lines (Body in White, Powder Coat, Battery Modules) are sized to run slightly
+// faster, so they fill their buffers and then block, as real feeder lines do.
+const FACTORY_MIN = 5;
+const TARGET_TAKT = 68; // minutes per pack
 const MWH_PER_UNIT = 3.9;
-const TRAYS_PER_PACK = 3; // 3 trays × 6 modules = 18 modules per pack
+const TRAYS_PER_PACK = 4; // 4 trays × 12 modules = 48 modules per pack
 
 // Pack line (front of plant, flows +x)
-const CONV_Y = 0.8;
+const CONV_Y = 0.35; // packs ride low floor rails, not a roller conveyor
 const PICK_X = 57;
 const TRUCK_Z = 16;
 // Battery module line (flows -x, ends at the rack warehouse)
@@ -42,6 +43,7 @@ const FRAME_DROP = PC_END_Y - HANG - FRAME_H - CONV_Y - PACK.BASE; // hanger →
 const LOAD_LIFT = PC_RAIL_Y - HANG - FRAME_H - BIW_Y; // BIW conveyor → hanger
 
 const STATUS_COLOR = { working: COLORS.green, idle: 0x6b7280, blocked: COLORS.amber, down: COLORS.red };
+const ZONE_COLOR = 0x5a626b;
 const STATUS_LABEL = { working: 'Working', idle: 'Starved', blocked: 'Blocked', down: 'Fault' };
 
 // Station visual styles
@@ -62,12 +64,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.95;
+renderer.toneMappingExposure = 0.88;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x14171b);
-scene.fog = new THREE.Fog(0x14171b, 160, 380);
+scene.background = new THREE.Color(0xc9d3dd);
+scene.fog = new THREE.Fog(0xc9d3dd, 220, 520);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 
@@ -81,8 +83,8 @@ controls.maxPolarAngle = Math.PI / 2.05;
 controls.minDistance = 4;
 controls.maxDistance = 300;
 
-scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x2a2d33, 0.55));
-const sun = new THREE.DirectionalLight(0xffffff, 1.7);
+scene.add(new THREE.HemisphereLight(0xf2f6ff, 0x7d838b, 0.75));
+const sun = new THREE.DirectionalLight(0xfffaf2, 1.8);
 sun.position.set(40, 90, 45);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
@@ -122,89 +124,220 @@ const moduleStock = { count: 30, cap: 56, crates: [] };
 // =====================================================================
 // Factory building
 // =====================================================================
+const roofGroup = new THREE.Group(); // hidden when the camera rises above the roof
+const bridgeCranes = [];
+
 function buildFactory() {
+  // Asphalt outside, light polished concrete inside the building
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 600), mat(0x7b8086, { roughness: 0.95 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.02;
+  ground.receiveShadow = true;
+  scene.add(ground);
   const floorTex = makeFloorTexture();
-  floorTex.repeat.set(36, 18);
+  floorTex.repeat.set(24, 9);
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(240, 120),
-    new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85, metalness: 0.05 }),
+    new THREE.PlaneGeometry(199, 70),
+    new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.35, metalness: 0.08 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
 
   const paint = mat(COLORS.yellow, { roughness: 0.7 });
-  const stripe = (x, z, w, d) => {
-    const s = box(w, 0.02, d, paint, false);
+  const stripe = (x, z, w, d, m = paint) => {
+    const s = box(w, 0.02, d, m, false);
     s.position.set(x, 0.01, z);
     s.receiveShadow = true;
     scene.add(s);
   };
-  stripe(0, -4.6, 132, 0.18);
-  stripe(0, 4.6, 104, 0.18);
+  stripe(-4, -5.0, 128, 0.16);
+  stripe(-4, 5.0, 128, 0.16);
   stripe(6, MOD_Z + 3.4, 74, 0.14);
-  stripe(66, BIW_Z + 4.6, 64, 0.14);
-  // Drive-through truck lane
+  stripe(66, BIW_Z + 5.6, 64, 0.14);
   stripe(0, TRUCK_Z - 2.3, 192, 0.18);
   stripe(0, TRUCK_Z + 2.3, 192, 0.18);
+  // Red/white hatched no-go zone in front of the shipping crane
+  const hatch = mat(COLORS.weldRed, { roughness: 0.7 });
+  for (let i = 0; i < 8; i++) stripe(PICK_X - 7 + i * 2, 6.6, 0.9, 1.6, i % 2 ? paint : hatch);
 
-  // Perimeter columns and eave beams (roof left open so the lines stay visible)
-  const steel = mat(0x50565e, { metalness: 0.6, roughness: 0.45 });
-  for (let x = -96; x <= 96; x += 16) {
-    for (const z of [-34, 34]) {
-      const c = box(0.7, 18, 0.7, steel);
-      c.position.set(x, 9, z);
+  buildBuilding();
+  buildFloorRails();
+  buildConveyor(-29, 41, MOD_Z, MOD_Y, 1.8, 0.4);
+  buildConveyor(31, 98.6, BIW_Z, BIW_Y, 2.3, 0.6);
+  buildWarehouse();
+  buildPaintRail();
+  buildFeederDecor();
+  buildBridgeCranes();
+  // Finished units staged in the yard outside the east wall, waiting for trucks
+  scene.add(createYard(18, 6, [112, -26]));
+}
+
+function buildBuilding() {
+  // White columns on a 16 m grid, each with a grid label like the ones in the plant
+  const white = mat(0xf1f3f5, { roughness: 0.5 });
+  const rows = [
+    { z: -34, letter: 'A', ok: () => true },
+    { z: -12, letter: 'F', ok: (x) => x >= -16 },
+    { z: 10, letter: 'G', ok: (x) => Math.abs(x - PICK_X) > 9 },
+    { z: 34, letter: 'K', ok: () => true },
+  ];
+  rows.forEach((row) => {
+    for (let x = -96, n = 1; x <= 96; x += 16, n++) {
+      if (!row.ok(x)) continue;
+      const c = box(0.6, 18, 0.6, white);
+      c.position.set(x, 9, row.z);
       scene.add(c);
+      if (Math.abs(row.z) < 30) {
+        const tex = makeLabelTexture(row.letter + n);
+        for (const side of [1, -1]) {
+          const lbl = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.0), new THREE.MeshBasicMaterial({ map: tex }));
+          lbl.position.set(x, 4.2, row.z + side * 0.31);
+          if (side < 0) lbl.rotation.y = Math.PI;
+          scene.add(lbl);
+        }
+      }
     }
-  }
-  for (const z of [-34, 34]) {
-    const b = box(192, 0.8, 0.5, steel, false);
-    b.position.set(0, 18, z);
-    scene.add(b);
-  }
+  });
 
-  const wall = new THREE.Mesh(
-    new THREE.PlaneGeometry(192, 18),
-    new THREE.MeshStandardMaterial({ color: 0xbfc4ca, roughness: 0.9 }),
-  );
-  wall.position.set(0, 9, -34.4);
-  wall.receiveShadow = true;
-  scene.add(wall);
+  // Roof: deck (faces down, so it is invisible from above), steel joists, girders and LED high-bays
+  const deck = new THREE.Mesh(new THREE.PlaneGeometry(199, 70), mat(0xd9dde2, { roughness: 0.9 }));
+  deck.rotation.x = Math.PI / 2;
+  deck.position.y = 19.2;
+  scene.add(deck);
+  const joistGeo = new THREE.BoxGeometry(0.12, 0.7, 68);
+  const joistCount = Math.floor(192 / 2.4) + 1;
+  const joists = new THREE.InstancedMesh(joistGeo, mat(0x5b6168, { metalness: 0.6, roughness: 0.5 }), joistCount);
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i < joistCount; i++) joists.setMatrixAt(i, m4.makeTranslation(-96 + i * 2.4, 18.6, 0));
+  roofGroup.add(joists);
+  for (const z of [-34, -12, 10, 34]) {
+    const g = box(192, 1.0, 0.35, mat(0x50565e, { metalness: 0.6, roughness: 0.45 }), false);
+    g.position.set(0, 18, z);
+    roofGroup.add(g);
+  }
+  const lampGeo = new THREE.BoxGeometry(0.7, 0.12, 0.7);
+  const lampPos = [];
+  for (let x = -93; x <= 93; x += 6) for (let z = -30; z <= 30; z += 6) lampPos.push([x, z]);
+  const lamps = new THREE.InstancedMesh(lampGeo, glow(0xffffff), lampPos.length);
+  lampPos.forEach(([x, z], i) => lamps.setMatrixAt(i, m4.makeTranslation(x, 17.6, z)));
+  roofGroup.add(lamps);
+  scene.add(roofGroup);
+
+  // Walls face inwards only: from outside you look straight in, from inside they close the room.
+  const panelTex = makePanelTexture();
+  const wallMat = (len) => {
+    const t = panelTex.clone();
+    t.needsUpdate = true;
+    t.repeat.set(len / 4, 1);
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.8 });
+  };
+  const wall = (x, z, len, rotY) => {
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(len, 19.2), wallMat(len));
+    w.position.set(x, 9.6, z);
+    w.rotation.y = rotY;
+    w.receiveShadow = true;
+    scene.add(w);
+  };
+  wall(0, -34.4, 199, 0);
+  wall(0, 34.4, 199, Math.PI);
+  // East and west walls leave an opening for the truck lane
+  for (const [x, rot] of [[-99.5, Math.PI / 2], [99.5, -Math.PI / 2]]) {
+    wall(x, (-34.4 + 12.5) / 2, 12.5 + 34.4, rot);
+    wall(x, (19.5 + 34.4) / 2, 34.4 - 19.5, rot);
+  }
   const sign = new THREE.Mesh(
     new THREE.PlaneGeometry(64, 8),
     new THREE.MeshStandardMaterial({ map: makeWallTexture(), roughness: 0.8 }),
   );
-  sign.position.set(0, 12.5, -34.3);
+  sign.position.set(0, 13, -34.3);
   scene.add(sign);
+}
 
-  buildConveyor(-64, 63, 0, CONV_Y, 2.3, 0.5);
-  buildConveyor(-29, 41, MOD_Z, MOD_Y, 1.8, 0.4);
-  buildConveyor(31, 99, BIW_Z, BIW_Y, 2.3, 0.6);
-  buildWarehouse();
-  buildPaintRail();
-  buildFeederDecor();
+// Pack line: pairs of low floor rails per station, with red end stops
+function buildFloorRails() {
+  const railMat = mat(0x8d949c, { metalness: 0.6, roughness: 0.4 });
+  const stop = mat(COLORS.weldRed);
+  const segs = [-64, -49, -35, -21, -7, 7, 21, 35, 49, 63];
+  for (let i = 0; i < segs.length - 1; i++) {
+    const x0 = segs[i] + 0.3;
+    const x1 = segs[i + 1] - 0.3;
+    for (const z of [-0.62, 0.62]) {
+      const r = box(x1 - x0, CONV_Y - 0.02, 0.28, railMat);
+      r.position.set((x0 + x1) / 2, (CONV_Y - 0.02) / 2, z);
+      scene.add(r);
+      for (const x of [x0 + 0.15, x1 - 0.15]) {
+        const s = box(0.3, CONV_Y + 0.02, 0.3, stop);
+        s.position.set(x, (CONV_Y + 0.02) / 2, z);
+        scene.add(s);
+      }
+    }
+    // Drive chain channel between the rails
+    const ch = box(x1 - x0, 0.06, 0.25, mat(0x3a3e44), false);
+    ch.position.set((x0 + x1) / 2, 0.03, 0);
+    scene.add(ch);
+  }
 }
 
 function buildConveyor(x0, x1, z, topY, width, pitch) {
   const len = x1 - x0;
   const cx = (x0 + x1) / 2;
   const bodyH = topY - 0.25;
-  const body = box(len, bodyH, width, mat(COLORS.dark, { metalness: 0.4, roughness: 0.5 }));
+  const body = box(len, bodyH, width, mat(0x8d949c, { metalness: 0.5, roughness: 0.45 }));
   body.position.set(cx, bodyH / 2 + 0.05, z);
   scene.add(body);
   for (const side of [-1, 1]) {
-    const rail = box(len, 0.14, 0.1, mat(COLORS.steel, { metalness: 0.7, roughness: 0.35 }));
+    const rail = box(len, 0.14, 0.1, mat(0xb4bac1, { metalness: 0.7, roughness: 0.35 }));
     rail.position.set(cx, topY - 0.04, z + side * (width / 2 + 0.05));
     scene.add(rail);
   }
   const rollerGeo = new THREE.CylinderGeometry(0.08, 0.08, width - 0.1, 10);
   rollerGeo.rotateX(Math.PI / 2);
   const count = Math.floor(len / pitch);
-  const rollers = new THREE.InstancedMesh(rollerGeo, mat(0x9aa1a9, { metalness: 0.8, roughness: 0.3 }), count);
+  const rollers = new THREE.InstancedMesh(rollerGeo, mat(0xc0c6cc, { metalness: 0.8, roughness: 0.3 }), count);
   const m4 = new THREE.Matrix4();
   for (let i = 0; i < count; i++) rollers.setMatrixAt(i, m4.makeTranslation(x0 + pitch / 2 + i * pitch, topY - 0.08, z));
   rollers.receiveShadow = true;
   scene.add(rollers);
+}
+
+// Yellow overhead bridge cranes with blue hoists over the pack line and BIW
+function buildBridgeCranes() {
+  const yellow = mat(COLORS.yellow, { metalness: 0.3, roughness: 0.5 });
+  const blue = mat(COLORS.conveyorBlue, { metalness: 0.4, roughness: 0.4 });
+  const specs = [
+    { z0: -8, z1: 8, xMin: -60, xMax: 40, y: 13.2 },
+    { z0: -8, z1: 8, xMin: -50, xMax: 46, y: 13.2 },
+    { z0: BIW_Z - 7, z1: BIW_Z + 7, xMin: 52, xMax: 92, y: 12 },
+  ];
+  for (const sp of [specs[0], specs[2]]) {
+    for (const z of [sp.z0, sp.z1]) {
+      const runway = box(sp.xMax - sp.xMin + 18, 0.5, 0.35, mat(0x5b6168, { metalness: 0.6 }), false);
+      runway.position.set((sp.xMin + sp.xMax) / 2, sp.y + 0.6, z);
+      scene.add(runway);
+    }
+  }
+  for (const sp of specs) {
+    const g = new THREE.Group();
+    const span = sp.z1 - sp.z0;
+    const bridge = box(0.7, 0.8, span + 0.6, yellow);
+    bridge.position.set(0, sp.y, (sp.z0 + sp.z1) / 2);
+    g.add(bridge);
+    const hoist = new THREE.Group();
+    const body = box(1.0, 0.7, 0.8, blue);
+    hoist.add(body);
+    const cable = cyl(0.03, 0.03, 1, 6, mat(0x111111), false);
+    hoist.add(cable);
+    const hook = box(0.35, 0.3, 0.25, mat(COLORS.yellow));
+    hoist.add(hook);
+    hoist.position.set(0, sp.y - 0.75, (sp.z0 + sp.z1) / 2);
+    g.add(hoist);
+    scene.add(g);
+    bridgeCranes.push({
+      sp, g, hoist, cable, hook,
+      x: THREE.MathUtils.randFloat(sp.xMin, sp.xMax), tx: sp.xMin, hz: 0, thz: 0, drop: 2, tdrop: 2, wait: 0,
+    });
+  }
 }
 
 function buildWarehouse() {
@@ -245,18 +378,18 @@ let pcPath;
 function buildPaintRail() {
   pcPath = roundedPath(PC_POINTS, 3.5);
   const rail = new THREE.Mesh(
-    new THREE.TubeGeometry(pcPath, 600, 0.11, 6, false),
-    mat(0x3a3f46, { metalness: 0.7, roughness: 0.35 }),
+    new THREE.TubeGeometry(pcPath, 600, 0.14, 8, false),
+    mat(COLORS.conveyorBlue, { metalness: 0.5, roughness: 0.4 }),
   );
   rail.position.y = 0.22;
   rail.castShadow = true;
   scene.add(rail);
   // Hanger rods from the roof structure every ~7 m
   const L = pcPath.getLength();
-  const rodMat = mat(0x4a5058, { metalness: 0.6, roughness: 0.4 });
+  const rodMat = mat(0x8d949c, { metalness: 0.6, roughness: 0.4 });
   for (let s = 2; s < L; s += 7) {
     const p = pcPath.getPoint(s / L);
-    const h = 18 - p.y;
+    const h = 18.3 - p.y;
     const rod = cyl(0.05, 0.05, h, 6, rodMat, false);
     rod.position.set(p.x, p.y + h / 2 + 0.2, p.z);
     scene.add(rod);
@@ -328,6 +461,17 @@ class Particles {
       this.age[k] = this.life * (0.6 + Math.random() * 0.6);
     }
   }
+  emitDir(p, dir, n, spread = 0.6) {
+    for (let i = 0; i < n; i++) {
+      const k = this.cursor;
+      this.cursor = (this.cursor + 1) % this.count;
+      this.pos.set([p.x, p.y, p.z], k * 3);
+      this.vel[k * 3] = dir.x + (Math.random() - 0.5) * spread;
+      this.vel[k * 3 + 1] = dir.y + (Math.random() - 0.5) * spread;
+      this.vel[k * 3 + 2] = dir.z + (Math.random() - 0.5) * spread;
+      this.age[k] = this.life * (0.6 + Math.random() * 0.6);
+    }
+  }
   update(dt) {
     const { pos, vel, age } = this;
     for (let k = 0; k < this.count; k++) {
@@ -347,7 +491,10 @@ class Particles {
 }
 const sparks = new Particles({ count: 900, color: 0xffb347, size: 0.12, gravity: 9.8, speed: 4, up: 3.2, life: 0.6 });
 const powder = new Particles({ count: 700, color: 0xf4f6ff, size: 0.35, gravity: -0.15, speed: 1.4, up: 0.4, life: 1.4, opacity: 0.35, additive: false });
-const mist = new Particles({ count: 500, color: 0x9cc8ff, size: 0.4, gravity: -0.6, speed: 0.9, up: 0.6, life: 1.6, opacity: 0.25, additive: false });
+const mist = new Particles({ count: 500, color: 0xe8f2ff, size: 0.55, gravity: -0.4, speed: 0.9, up: 0.6, life: 1.8, opacity: 0.22, additive: false });
+const water = new Particles({ count: 1400, color: 0xd6ecff, size: 0.09, gravity: 9.8, speed: 0, up: 0, life: 0.5, opacity: 0.8, additive: false });
+const tmpC = new THREE.Vector3();
+const tmpD = new THREE.Vector3();
 const tmpV = new THREE.Vector3();
 
 // =====================================================================
@@ -480,22 +627,22 @@ const MAIN = new Line({
   path: new THREE.LineCurve3(new THREE.Vector3(-56, CONV_Y, 0), new THREE.Vector3(PICK_X, CONV_Y, 0)),
   speed: 4, spacing: 11, style: 'gantry', yaw: 0,
   stations: [
-    { id: 'chassis', name: 'Chassis Load', at: -56, cycle: 5,
+    { id: 'chassis', name: 'Chassis Load', at: -56, cycle: 5, crew: [[-2.5, 1]],
       desc: 'A powder-coated frame comes down off the overhead paint conveyor and is lowered onto a steel skid.' },
-    { id: 'modules', name: 'Module Install', at: -42, cycle: 9, robots: [[-2.2, -1], [2.2, 1]],
+    { id: 'busbar', name: 'HV Busbar & Harness', at: -42, cycle: 7, crew: [[-1.5, 1], [1.5, -1]],
+      desc: 'Technicians build the high-voltage spine down the centre of the frame: vertical rails and orange insulated busbars.' },
+    { id: 'modules', name: 'Module Install', at: -28, cycle: 9, assists: [[-2.4, -1], [2.4, 1]], crew: [[-1.2, -1], [1.2, 1]],
       consume: { buffer: moduleStock, n: TRAYS_PER_PACK },
-      desc: `AGVs bring module trays from the rack warehouse; twin robots insert 18 modules (${TRAYS_PER_PACK} trays) into the frame bays.` },
-    { id: 'busbar', name: 'Busbar & HV Wiring', at: -28, cycle: 7, robots: [[-1.8, -1], [1.8, 1]], sparks: true,
-      desc: 'Robots bolt and laser-weld copper busbars that link the modules into high-voltage strings.' },
-    { id: 'thermal', name: 'Thermal & Inverter', at: -14, cycle: 8,
+      desc: `AGVs bring module trays from the rack warehouse. Operators use lift-assist arms to slide 48 modules (${TRAYS_PER_PACK} trays) into the bays from both sides.` },
+    { id: 'thermal', name: 'Thermal & Inverter', at: -14, cycle: 8, platform: true, crew: [[-2, 1, true], [2, -1, true]],
       desc: 'An overhead hoist sets the integrated thermal roof (chillers, fans) and power-conversion electronics.' },
-    { id: 'enclosure', name: 'Enclosure & Doors', at: 0, cycle: 8, robots: [[-2.2, 1], [2.2, -1]], sparks: true,
-      desc: 'Side doors and end caps are fitted and welded, sealing the enclosure against weather and dust.' },
-    { id: 'coolant', name: 'Coolant Fill', at: 14, cycle: 6, robots: [[2.5, -1]],
+    { id: 'enclosure', name: 'Enclosure & Doors', at: 0, cycle: 8, assists: [[-2.4, 1], [2.4, -1]], crew: [[-1.2, 1], [1.2, -1]],
+      desc: 'Sixteen side doors are hung and swung shut, then the end caps go on, sealing the enclosure against weather and dust.' },
+    { id: 'coolant', name: 'Coolant Fill', at: 14, cycle: 6, platform: true, crew: [[2.5, -1, true], [-1, 1]],
       desc: 'The glycol coolant loop is vacuum-checked for leaks, then filled and bled.' },
-    { id: 'eol', name: 'End-of-Line Test', at: 28, cycle: 10, failRate: 0.06, failText: 'insulation test',
+    { id: 'eol', name: 'End-of-Line Test', at: 28, cycle: 10, failRate: 0.06, failText: 'insulation test', crew: [[-3, 1]],
       desc: 'Full functional test: insulation resistance, BMS comms and a charge/discharge pulse. Failures are re-tested.' },
-    { id: 'qa', name: 'Final QA', at: 42, cycle: 5,
+    { id: 'qa', name: 'Final QA', at: 42, cycle: 5, crew: [[-1.5, 1], [1.5, -1]],
       desc: 'Visual and dimensional inspection, serial labelling and release to the shipping crane.' },
   ],
   sOf: (x) => x + 56,
@@ -514,19 +661,19 @@ const MAIN = new Line({
 const MODULE = new Line({
   id: 'module', name: 'Battery Modules', prefix: 'MT', unitName: 'trays',
   path: new THREE.LineCurve3(new THREE.Vector3(38, MOD_Y, MOD_Z), new THREE.Vector3(-26, MOD_Y, MOD_Z)),
-  speed: 3, spacing: 3.2, style: 'mini', yaw: Math.PI, autoSpawn: true,
+  speed: 3.5, spacing: 3.0, style: 'mini', yaw: Math.PI, autoSpawn: true,
   stations: [
-    { id: 'm-intake', name: 'Cell Intake & Test', at: 38, cycle: 2.4,
+    { id: 'm-intake', name: 'Cell Intake & Test', at: 38, cycle: 2.0,
       desc: 'Cylindrical cells are de-palletised, scanned and OCV/IR tested; a module tray is indexed onto the line.' },
-    { id: 'm-insert', name: 'Cell Insertion', at: 29, cycle: 2.8, robots: [[0, 1]],
-      desc: 'A robot loads 144 tested cells into the tray’s six module carriers.' },
-    { id: 'm-weld', name: 'Interconnect Weld', at: 20, cycle: 2.8, robots: [[0, -1]], sparks: true,
+    { id: 'm-insert', name: 'Cell Insertion', at: 29, cycle: 2.2, robots: [[0, 1]],
+      desc: 'A robot loads 144 tested cells into the tray’s twelve module carriers.' },
+    { id: 'm-weld', name: 'Interconnect Weld', at: 20, cycle: 2.2, robots: [[0, -1]], sparks: true,
       desc: 'Laser welding joins every cell to the copper current-collector plates.' },
-    { id: 'm-pot', name: 'Adhesive & Potting', at: 11, cycle: 2.4,
+    { id: 'm-pot', name: 'Adhesive & Potting', at: 11, cycle: 2.0,
       desc: 'A dispensing head fills the gaps with thermally-conductive potting compound.' },
-    { id: 'm-lid', name: 'Module Enclosure', at: 2, cycle: 2.4, robots: [[0, 1]],
-      desc: 'Module lids and sense boards are placed and fastened.' },
-    { id: 'm-test', name: 'Module EOL Test', at: -7, cycle: 2.6, failRate: 0.03, failText: 'module isolation test',
+    { id: 'm-lid', name: 'Module Lid & BMS Board', at: 2, cycle: 2.2, robots: [[0, 1]], gripper: true,
+      desc: 'A robot with a red gripper places module lids and the green battery-management boards on top.' },
+    { id: 'm-test', name: 'Module EOL Test', at: -7, cycle: 2.2, failRate: 0.03, failText: 'module isolation test',
       desc: 'Voltage, isolation and BMS-board checks. Passing trays go to the rack warehouse.' },
   ],
   sOf: (x) => 38 - x,
@@ -638,12 +785,18 @@ function mainProgress(u, st, p) {
       u.frameDrop = (1 - ease(clamp01(p / 0.85))) * FRAME_DROP;
       u.frame.position.y = PACK.BASE + u.frameDrop;
       break;
-    case 'modules':
-      revealCount(u.modules, p);
-      break;
     case 'busbar':
-      revealCount(u.busbars, p);
+      revealCount(u.hv, p);
       break;
+    case 'modules': {
+      // Modules slide in one after another, alternating sides
+      const m = u.modules;
+      const f = p * m.total;
+      const n = Math.min(m.total, Math.floor(f) + 1);
+      m.setCount(p >= 1 ? m.total : n);
+      for (let i = Math.max(0, n - 2); i < n; i++) m.place(i, Math.max(0, 1 - ease(clamp01(f - i))) * 1.6);
+      break;
+    }
     case 'thermal':
       e.carrierY = THREE.MathUtils.lerp(6.2, CONV_Y + PACK.FRAME_TOP, ease(clamp01(p / 0.8)));
       if (p >= 0.85) {
@@ -651,9 +804,16 @@ function mainProgress(u, st, p) {
         e.carrier.visible = false;
       }
       break;
-    case 'enclosure':
-      revealCount(u.doors, p);
+    case 'enclosure': {
+      // Each door appears open and swings shut on its hinge
+      const f = p * u.doors.length;
+      u.doors.forEach((d, i) => {
+        const k = clamp01(f - i);
+        d.visible = k > 0;
+        if (d.userData.side) d.rotation.y = -d.userData.side * (1 - ease(k)) * 1.4;
+      });
       break;
+    }
     case 'coolant':
       e.hoseY = THREE.MathUtils.lerp(6.8, CONV_Y + PACK.HEIGHT, ease(clamp01(Math.min(p, 1 - p) * 5)));
       if (p > 0.3) u.coolantLight.visible = true;
@@ -679,18 +839,18 @@ function moduleProgress(u, st, p) {
       u.cells.count = Math.floor(p * u.cells.instanceMatrix.count);
       break;
     case 'm-weld':
-      revealCount(u.welds, p);
+      u.welds.count = Math.floor(p * TRAY.MODULES);
       break;
     case 'm-pot':
-      revealCount(u.potting, p);
+      u.potting.count = Math.floor(p * TRAY.MODULES);
       e.nozzleX = Math.sin(p * Math.PI * 6) * (TRAY.L / 2 - 0.3);
       break;
     case 'm-lid':
-      revealCount(u.lids, p);
+      u.lids.count = Math.floor(p * TRAY.MODULES);
+      u.pcbs.count = Math.floor(clamp01(p * 1.15 - 0.15) * TRAY.MODULES);
       if (p >= 1) {
         // Everything under the lids is hidden now – skip drawing it
-        u.cells.visible = false;
-        u.welds.concat(u.potting).forEach((m) => { m.visible = false; });
+        u.cells.visible = u.welds.visible = u.potting.visible = false;
       }
       break;
     case 'm-test':
@@ -765,7 +925,7 @@ function buildStation(line, cfg, index) {
   st.group.rotation.y = line.yaw;
   scene.add(st.group);
 
-  const frameMat = mat(0x3a3f46, { metalness: 0.6, roughness: 0.4 });
+  const frameMat = mat(0x9aa1a9, { metalness: 0.6, roughness: 0.4 });
   const tex = makeSignTexture(index + 1, cfg.name, line.name.toUpperCase());
   let beaconPos;
   if (styleName === 'gantry' || styleName === 'mini') {
@@ -805,7 +965,7 @@ function buildStation(line, cfg, index) {
   const zx = cfg.long ? sty.zoneX + 1.5 : sty.zoneX;
   const pts = [[-zx, -sty.zoneZ], [zx, -sty.zoneZ], [zx, sty.zoneZ], [-zx, sty.zoneZ], [-zx, -sty.zoneZ]]
     .map(([x, z]) => new THREE.Vector3(x, 0.03, z));
-  st.zoneMat = new THREE.LineBasicMaterial({ color: 0x8a929c, transparent: true, opacity: 0.5 });
+  st.zoneMat = new THREE.LineBasicMaterial({ color: ZONE_COLOR, transparent: true, opacity: 0.6 });
   st.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), st.zoneMat));
   const pick = new THREE.Mesh(
     new THREE.BoxGeometry(zx * 2, sty.height + 2, sty.zoneZ * 2),
@@ -817,14 +977,64 @@ function buildStation(line, cfg, index) {
   pickables.push(pick);
 
   for (const [dx, side] of cfg.robots ?? []) {
-    const color = line === PC ? 0xd8dbe0 : index % 2 ? COLORS.red : 0xd8dbe0;
-    const r = createRobot(color, sty.robotScale);
+    // Yellow 6-axis robots; paint robots wear white covers; module-line gripper is red
+    const color = line === PC ? 0xeef0f2 : COLORS.fanuc;
+    const r = createRobot(color, sty.robotScale, cfg.gripper ? COLORS.weldRed : COLORS.dark);
     r.root.position.set(dx, 0, side * -sty.robotZ);
     r.baseYaw = side < 0 ? Math.PI : 0;
     r.turret.rotation.y = r.baseYaw;
     r.phase = Math.random() * 10;
     st.group.add(r.root);
     st.robots.push(r);
+    if (cfg.sparks) {
+      // Red welding power source next to each weld robot
+      const welder = box(0.7 * sty.robotScale + 0.2, 0.9, 0.55, mat(COLORS.weldRed, { roughness: 0.5 }));
+      welder.position.set(dx + (dx >= 0 ? 1.3 : -1.3) * sty.robotScale, 0.45, side * -(sty.robotZ + 0.6));
+      st.group.add(welder);
+    }
+  }
+  st.assists = [];
+  for (const [dx, side] of cfg.assists ?? []) {
+    const a = createLiftAssist();
+    a.root.position.set(dx, 0, side * 3.4);
+    a.baseYaw = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+    a.arm1.rotation.y = a.baseYaw + 0.9;
+    a.arm2.rotation.y = -1.6;
+    a.phase = Math.random() * 10;
+    st.group.add(a.root);
+    st.assists.push(a);
+  }
+  if (cfg.platform) {
+    // Elevated work platforms on both sides for top-of-pack access
+    const deckY = CONV_Y + PACK.FRAME_TOP - 0.2;
+    const steel = mat(0x8d949c, { metalness: 0.5, roughness: 0.5 });
+    for (const side of [-1, 1]) {
+      const deck = box(9, 0.12, 1.3, mat(0x6b7178, { metalness: 0.4, roughness: 0.6 }));
+      deck.position.set(0, deckY, side * 2.05);
+      st.group.add(deck);
+      const rail = box(9, 0.06, 0.06, mat(COLORS.yellow));
+      rail.position.set(0, deckY + 1.05, side * 2.65);
+      st.group.add(rail);
+      for (const x of [-4.4, -1.5, 1.5, 4.4]) {
+        const leg = box(0.12, deckY, 0.12, steel);
+        leg.position.set(x, deckY / 2, side * 2.6);
+        st.group.add(leg);
+        const post = box(0.05, 1.05, 0.05, mat(COLORS.yellow));
+        post.position.set(x, deckY + 0.52, side * 2.65);
+        st.group.add(post);
+      }
+    }
+  }
+  st.crew = [];
+  for (const [dx, side, onPlatform] of cfg.crew ?? []) {
+    const colors = [0xff7a1a, 0xf2e21a, 0x9be22e];
+    const w = createWorker(colors[(index + st.crew.length) % 3]);
+    const y = onPlatform ? CONV_Y + PACK.FRAME_TOP - 0.14 : 0;
+    w.position.set(dx, y, side * (onPlatform ? 2.0 : 1.55));
+    w.rotation.y = side > 0 ? Math.PI : 0;
+    w.userData = { baseX: dx, y, phase: Math.random() * 10 };
+    st.group.add(w);
+    st.crew.push(w);
   }
 
   buildStationExtras(st);
@@ -886,10 +1096,66 @@ function testCabinets(st, x0, z, scale = 1) {
   }
 }
 
+// Red translucent welding-curtain walls on aluminium posts (open at both ends for the conveyor)
+const curtainMat = new THREE.MeshStandardMaterial({
+  color: 0xd0142c, transparent: true, opacity: 0.55, roughness: 0.4, side: THREE.DoubleSide, depthWrite: false,
+});
+function weldCell(g, len, halfZ, h) {
+  const post = mat(0xc0c6cc, { metalness: 0.7, roughness: 0.35 });
+  for (const z of [-halfZ, halfZ]) {
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(len, h), curtainMat);
+    wall.position.set(0, h / 2 + 0.15, z);
+    g.add(wall);
+    for (let x = -len / 2; x <= len / 2 + 0.01; x += len / 5) {
+      const p = box(0.08, h + 0.2, 0.08, post);
+      p.position.set(x, (h + 0.2) / 2, z);
+      g.add(p);
+    }
+    const top = box(len, 0.08, 0.08, post);
+    top.position.set(0, h + 0.2, z);
+    g.add(top);
+  }
+}
+
+const guardPanelMat = new THREE.MeshStandardMaterial({
+  color: 0xdfe8ef, transparent: true, opacity: 0.18, roughness: 0.1, side: THREE.DoubleSide, depthWrite: false,
+});
+function moduleGuard(g, halfX, halfZ, h) {
+  const alu = mat(0xc4cad0, { metalness: 0.7, roughness: 0.35 });
+  for (const x of [-halfX, halfX]) {
+    for (const z of [-halfZ, halfZ]) {
+      const p = box(0.07, h, 0.07, alu);
+      p.position.set(x, h / 2, z);
+      g.add(p);
+    }
+  }
+  for (const z of [-halfZ, halfZ]) {
+    for (const y of [0.15, h]) {
+      const r = box(halfX * 2, 0.07, 0.07, alu, false);
+      r.position.set(0, y, z);
+      g.add(r);
+    }
+  }
+  // Clear panel on the back side
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, h - 0.2), guardPanelMat);
+  panel.position.set(0, h / 2 + 0.05, halfZ);
+  g.add(panel);
+  // Yellow/black light-curtain posts at the cell entry
+  for (const z of [-halfZ + 0.3, halfZ - 0.3]) {
+    const lc = box(0.08, 1.6, 0.08, mat(COLORS.yellow), false);
+    lc.position.set(halfX - 0.1, 0.9, z);
+    g.add(lc);
+    const band = box(0.09, 0.2, 0.09, mat(0x111111), false);
+    band.position.set(halfX - 0.1, 1.55, z);
+    g.add(band);
+  }
+}
+
 function buildStationExtras(st) {
   const g = st.group;
   const e = st.extras;
   const sty = st.sty;
+  if (st.line === MODULE) moduleGuard(g, 3.9, 2.35, 2.2);
   switch (st.cfg.id) {
     // ---------------- pack line ----------------
     case 'chassis': {
@@ -1010,14 +1276,29 @@ function buildStationExtras(st) {
     case 'b-base':
     case 'b-side':
     case 'b-roof': {
-      // Weld fixture clamps along both sides of the conveyor
-      for (const z of [-1.5, 1.5]) {
-        for (const x of [-3.5, 0, 3.5]) {
-          const c = box(0.3, 1.2, 0.25, mat(0x2f6fd6, { metalness: 0.4 }));
-          c.position.set(x, BIW_Y + 0.6, z);
+      weldCell(g, 11, 5.0, 2.6);
+      // Red fixture rails and pneumatic clamps holding the frame during welding
+      const red = mat(COLORS.weldRed, { roughness: 0.5, metalness: 0.2 });
+      for (const z of [-1.25, 1.25]) {
+        const rail = box(9.6, 0.25, 0.3, red);
+        rail.position.set(0, BIW_Y + 0.12, z);
+        g.add(rail);
+        for (const x of [-4, -2, 0, 2, 4]) {
+          const c = box(0.22, 0.5, 0.22, red);
+          c.position.set(x, BIW_Y + 0.5, z * 1.1);
           g.add(c);
+          const cyl1 = cyl(0.06, 0.06, 0.4, 8, mat(0xc0c6cc, { metalness: 0.8 }));
+          cyl1.position.set(x, BIW_Y + 0.95, z * 1.1);
+          g.add(cyl1);
         }
       }
+      // Fume extraction hood over the cell
+      const hood = box(6, 0.5, 2.6, mat(0xb4bac1, { metalness: 0.6 }));
+      hood.position.set(0, 6.4, 0);
+      g.add(hood);
+      const duct = cyl(0.35, 0.35, 1.0, 12, mat(0xb4bac1, { metalness: 0.6 }));
+      duct.position.set(0, 7.1, 0);
+      g.add(duct);
       break;
     }
     case 'b-cmm':
@@ -1033,18 +1314,71 @@ function buildStationExtras(st) {
       g.add(table);
       break;
     }
-    case 'p-wash':
-      tunnel(g, 10, sty,
-        new THREE.MeshStandardMaterial({ color: 0x8fb4d8, transparent: true, opacity: 0.28, roughness: 0.1, metalness: 0.2, depthWrite: false }),
-        mat(0x5a6470, { metalness: 0.5 }));
+    case 'p-wash': {
+      // Stainless tunnel with chamfered roof; the near wall is glass so the spray is visible
+      const ss = mat(0xc9d0d7, { metalness: 0.85, roughness: 0.28 });
+      const glass = new THREE.MeshStandardMaterial({ color: 0xbfd6e8, transparent: true, opacity: 0.18, roughness: 0.05, depthWrite: false });
+      const h = sty.height;
+      const wallH = h - 1.0;
+      const back = box(10, wallH, 0.08, ss);
+      back.position.set(0, wallH / 2, sty.halfZ);
+      g.add(back);
+      const front = new THREE.Mesh(new THREE.BoxGeometry(10, wallH, 0.05), glass);
+      front.position.set(0, wallH / 2, -sty.halfZ);
+      g.add(front);
+      for (const side of [-1, 1]) {
+        const ch = box(10, 1.45, 0.08, side > 0 ? ss : glass);
+        ch.position.set(0, wallH + 0.5, side * (sty.halfZ - 0.5));
+        ch.rotation.x = side * 0.78;
+        g.add(ch);
+      }
+      const roof = box(10, 0.08, sty.halfZ * 2 - 2.0, ss);
+      roof.position.set(0, h, 0);
+      g.add(roof);
+      // Vertical risers with orange nozzles on both inner walls
       e.nozzles = [];
-      for (const x of [-3, 0, 3]) for (const z of [-1.6, 1.6]) e.nozzles.push(new THREE.Vector3(x, 3.4, z));
+      const riser = mat(0x2b2f35, { metalness: 0.5 });
+      const nozzle = mat(COLORS.hvOrange);
+      for (let x = -4.5; x <= 4.5; x += 0.9) {
+        for (const side of [-1, 1]) {
+          const z = side * (sty.halfZ - 0.25);
+          const r = cyl(0.04, 0.04, wallH - 0.4, 6, riser, false);
+          r.position.set(x, wallH / 2 + 0.1, z);
+          g.add(r);
+          for (let y = 0.8; y < wallH; y += 0.75) {
+            const n = box(0.1, 0.08, 0.12, nozzle, false);
+            n.position.set(x, y, z - side * 0.08);
+            g.add(n);
+            if ((x * 10 + y * 7) % 3 < 1.2) e.nozzles.push({ p: new THREE.Vector3(x, y, z - side * 0.12), side });
+          }
+        }
+      }
+      // Drain grating
+      const grate = box(10, 0.05, sty.halfZ * 2 - 0.2, mat(0x5b6168, { metalness: 0.6 }), false);
+      grate.position.set(0, 0.03, 0);
+      g.add(grate);
       break;
-    case 'p-booth':
-      tunnel(g, 10, sty,
-        new THREE.MeshStandardMaterial({ color: 0xe8ecef, transparent: true, opacity: 0.22, roughness: 0.2, depthWrite: false }),
-        mat(0xc9ced4, { metalness: 0.3 }));
+    }
+    case 'p-booth': {
+      const wall = mat(0xc5cfc9, { roughness: 0.7 });
+      const glass = new THREE.MeshStandardMaterial({ color: 0xdfe8e4, transparent: true, opacity: 0.16, roughness: 0.05, depthWrite: false });
+      const back = box(10, sty.height, 0.1, wall);
+      back.position.set(0, sty.height / 2, sty.halfZ);
+      g.add(back);
+      const front = new THREE.Mesh(new THREE.BoxGeometry(10, sty.height, 0.05), glass);
+      front.position.set(0, sty.height / 2, -sty.halfZ);
+      g.add(front);
+      const roof = box(10, 0.12, sty.halfZ * 2, wall);
+      roof.position.set(0, sty.height, 0);
+      g.add(roof);
+      // Tall light panels set into the back wall
+      for (const x of [-3.6, -1.2, 1.2, 3.6]) {
+        const lp = box(0.55, 2.6, 0.02, glow(0xf4f8ff), false);
+        lp.position.set(x, 2.4, sty.halfZ - 0.06);
+        g.add(lp);
+      }
       break;
+    }
     case 'p-oven': {
       const wall = mat(0x6a7077, { metalness: 0.6, roughness: 0.45 });
       tunnel(g, 14, sty, wall, wall);
@@ -1169,8 +1503,8 @@ function spawnTruck() {
 // =====================================================================
 const agvCurve = new THREE.CatmullRomCurve3(
   [
-    [-70, -12.5], [-58, -10], [-46, -8.4], [-38, -8.6], [-30, -11.5],
-    [-34, -14.6], [-52, -16.5], [-66, -17], [-74, -15],
+    [-70, -12.5], [-56, -10.5], [-40, -9.4], [-31, -7.9], [-24, -8.6], [-24.5, -12.4],
+    [-36, -14.4], [-52, -16.5], [-66, -17], [-74, -15],
   ].map(([x, z]) => new THREE.Vector3(x, 0, z)),
   true,
 );
@@ -1182,14 +1516,14 @@ const agvs = [0, 0.33, 0.66].map((u) => {
 });
 
 const workers = [
-  { z: -5.6, min: -60, max: -10, color: 0xff7a1a },
-  { z: 5.6, min: -40, max: 10, color: 0xf2e21a },
-  { z: -5.6, min: -5, max: 45, color: 0xff7a1a },
-  { z: 5.6, min: 15, max: 50, color: 0x9be22e },
+  { z: -5.8, min: -60, max: -10, color: 0xff7a1a },
+  { z: 5.8, min: -40, max: 10, color: 0xf2e21a },
+  { z: -5.8, min: -5, max: 45, color: 0xff7a1a },
+  { z: 5.8, min: 15, max: 50, color: 0x9be22e },
   { z: 10.5, min: 46, max: 68, color: 0xf2e21a },
   { z: -10, min: -76, max: -50, color: 0xff7a1a },
   { z: MOD_Z + 3.0, min: -8, max: 38, color: 0x9be22e },
-  { z: BIW_Z + 4.0, min: 50, max: 92, color: 0xff7a1a },
+  { z: BIW_Z + 5.9, min: 50, max: 92, color: 0xff7a1a },
   { z: BIW_Z + 4.0, min: -20, max: 34, color: 0xf2e21a },
 ].map((w) => {
   const group = createWorker(w.color);
@@ -1382,9 +1716,24 @@ function updateVisuals(simDt, realDt) {
     st.status = stationStatus(st);
     const color = st.status === 'down' ? (Math.floor(blink * 4) % 2 ? COLORS.red : 0x330000) : STATUS_COLOR[st.status];
     st.beaconMat.color.setHex(color);
-    st.zoneMat.color.setHex(st === selected ? 0xffffff : st.status === 'down' ? COLORS.red : 0x8a929c);
-    st.zoneMat.opacity = st === selected ? 0.9 : 0.5;
+    st.zoneMat.color.setHex(st === selected ? 0x111111 : st.status === 'down' ? COLORS.red : ZONE_COLOR);
+    st.zoneMat.opacity = st === selected ? 1 : 0.6;
     const working = st.status === 'working' && !sim.paused;
+    for (const a of st.assists) {
+      if (working) a.phase += simDt;
+      const k = 1 - Math.exp(-4 * realDt);
+      const t1 = working ? a.baseYaw + Math.sin(a.phase * 0.9) * 0.45 : a.baseYaw + 0.9;
+      const t2 = working ? -0.4 + Math.sin(a.phase * 1.3 + 1) * 0.5 : -1.6;
+      a.arm1.rotation.y += (t1 - a.arm1.rotation.y) * k;
+      a.arm2.rotation.y += (t2 - a.arm2.rotation.y) * k;
+    }
+    for (const w of st.crew) {
+      const d = w.userData;
+      if (working) d.phase += simDt * 3;
+      w.position.x = d.baseX + (working ? Math.sin(d.phase * 0.4) * 0.6 : 0);
+      w.position.y = d.y + (working ? Math.abs(Math.sin(d.phase)) * 0.04 : 0);
+      w.rotation.z = working ? Math.sin(d.phase * 0.7) * 0.06 : 0;
+    }
     for (const r of st.robots) {
       animateRobot(r, working, simDt, realDt);
       if (working && Math.random() < 0.6) {
@@ -1444,9 +1793,15 @@ function updateVisuals(simDt, realDt) {
         e.nozzle.position.x = e.nozzleX;
         break;
       case 'p-wash':
-        if (occ && !sim.paused && Math.random() < 0.7) {
-          const n = e.nozzles[Math.floor(Math.random() * e.nozzles.length)];
-          mist.emit(st.group.localToWorld(tmpV.copy(n)), 2);
+        if (occ && !sim.paused) {
+          for (let i = 0; i < 6; i++) {
+            const n = e.nozzles[Math.floor(Math.random() * e.nozzles.length)];
+            st.group.localToWorld(tmpV.copy(n.p));
+            st.group.localToWorld(tmpC.set(n.p.x, n.p.y - 0.4, 0));
+            tmpD.copy(tmpC).sub(tmpV).normalize().multiplyScalar(5.5);
+            water.emitDir(tmpV, tmpD, 3, 0.8);
+          }
+          if (Math.random() < 0.5) mist.emit(st.group.localToWorld(tmpV.set(0, 1.5, 0)), 2);
         }
         break;
       case 'p-oven':
@@ -1475,7 +1830,7 @@ function updateVisuals(simDt, realDt) {
       const t = agvCurve.getTangentAt(a.u);
       a.group.position.copy(p);
       a.group.rotation.y = Math.atan2(-t.z, t.x);
-      a.cargo.visible = a.u > 0.72 || a.u < 0.3;
+      a.cargo.visible = a.u > 0.75 || a.u < 0.36;
     }
     for (const w of workers) {
       if (w.pause > 0) {
@@ -1498,9 +1853,39 @@ function updateVisuals(simDt, realDt) {
     }
   }
 
+  if (!sim.paused) {
+    for (const b of bridgeCranes) {
+      const toward = (v, t, step) => (Math.abs(t - v) <= step ? t : v + Math.sign(t - v) * step);
+      if (b.wait > 0) {
+        b.wait -= simDt;
+        if (b.wait <= 0) {
+          b.tx = THREE.MathUtils.randFloat(b.sp.xMin, b.sp.xMax);
+          b.thz = THREE.MathUtils.randFloat(-0.35, 0.35) * (b.sp.z1 - b.sp.z0);
+        }
+        // Lower the hook while parked, raise it before moving off
+        b.tdrop = b.wait > 1.5 ? 6 : 2;
+      } else {
+        b.tdrop = 2;
+        if (b.drop <= 2.01) {
+          b.x = toward(b.x, b.tx, 3 * simDt);
+          b.hz = toward(b.hz, b.thz, 1.5 * simDt);
+        }
+        if (b.x === b.tx && b.hz === b.thz) b.wait = THREE.MathUtils.randFloat(4, 9);
+      }
+      b.drop = toward(b.drop, b.tdrop, 2 * simDt);
+      b.g.position.x = b.x;
+      b.hoist.position.z = (b.sp.z0 + b.sp.z1) / 2 + b.hz;
+      b.cable.scale.y = b.drop;
+      b.cable.position.y = -0.35 - b.drop / 2;
+      b.hook.position.y = -0.35 - b.drop - 0.15;
+    }
+  }
+  roofGroup.visible = camera.position.y < 18;
+
   sparks.update(realDt);
   powder.update(realDt);
   mist.update(realDt);
+  water.update(realDt);
 }
 
 // =====================================================================
@@ -1718,7 +2103,8 @@ function updateUI(force = false) {
   $('k-clock').textContent = fmtClock(sim.time);
   $('k-shipped').textContent = sim.shipped;
   $('k-energy').textContent = fmtEnergy(sim.shipped * MWH_PER_UNIT);
-  $('k-rate').textContent = rate ? rate.toFixed(2) : '—';
+  $('k-rate').textContent = rate ? `${Math.round(60 / rate)} min` : '—';
+  $('k-rate').dataset.low = rate > 0 && 60 / rate > TARGET_TAKT * 1.05;
   $('k-annual').textContent = rate ? `${((rate * 24 * 365 * MWH_PER_UNIT) / 1000).toFixed(0)} GWh/yr` : '—';
   $('k-wip').textContent = wip;
   $('k-fpy').textContent = sim.tested ? `${((sim.firstPass / sim.tested) * 100).toFixed(1)}%` : '—';

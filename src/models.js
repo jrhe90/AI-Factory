@@ -16,6 +16,10 @@ export const COLORS = {
   blue: 0x2f8cff,
   green: 0x22c55e,
   amber: 0xf59e0b,
+  fanuc: 0xf2c200, // robot yellow
+  weldRed: 0xc8102e, // weld cells, fixtures, welders
+  hvOrange: 0xf2801f, // HV busbars and module covers
+  conveyorBlue: 0x1f6fd1,
 };
 
 // Pack dimensions (metres) – roughly a Megapack-class enclosure.
@@ -24,7 +28,7 @@ export const PACK = {
   W: 1.65, // depth
   BASE: 0.25, // skid height
   BODY: 2.0, // module bay height
-  BAYS: 6,
+  BAYS: 8,
   LEVELS: 3,
 };
 PACK.FRAME_TOP = PACK.BASE + PACK.BODY + 0.05;
@@ -78,31 +82,52 @@ export function sphere(r, material) {
 }
 
 // ---------- thermal roof (shared by packs and the roof hoist carrier) ----------
+// Two rows of fans on top and a louvre band down each long side, as on Megapack 2 XL.
 export function createRoof() {
   const g = new THREE.Group();
   const shell = box(PACK.L, PACK.ROOF_H, PACK.W, mat(COLORS.white, { roughness: 0.45 }));
   shell.position.y = PACK.ROOF_H / 2;
   g.add(shell);
-  for (let i = 0; i < 4; i++) {
-    const x = -PACK.L / 2 + (PACK.L * (i + 0.5)) / 4;
-    const fan = cyl(0.36, 0.36, 0.06, 24, mat(COLORS.dark));
-    fan.position.set(x, PACK.ROOF_H + 0.03, 0);
-    g.add(fan);
-    const hub = cyl(0.1, 0.1, 0.08, 12, mat(COLORS.steel, { metalness: 0.7, roughness: 0.3 }));
-    hub.position.set(x, PACK.ROOF_H + 0.05, 0);
-    g.add(hub);
+  const fanMat = mat(COLORS.dark);
+  const hubMat = mat(COLORS.steel, { metalness: 0.7, roughness: 0.3 });
+  for (let i = 0; i < 5; i++) {
+    for (const z of [-0.38, 0.38]) {
+      const x = -PACK.L / 2 + 1.4 + i * ((PACK.L - 2.8) / 4);
+      const fan = cyl(0.3, 0.3, 0.05, 20, fanMat);
+      fan.position.set(x, PACK.ROOF_H + 0.025, z);
+      g.add(fan);
+      const hub = cyl(0.08, 0.08, 0.07, 10, hubMat);
+      hub.position.set(x, PACK.ROOF_H + 0.04, z);
+      g.add(hub);
+    }
   }
-  // Inverter / power-conversion bulge at one end
-  const inv = box(1.1, 0.12, PACK.W - 0.2, mat(COLORS.offWhite));
-  inv.position.set(PACK.L / 2 - 0.7, PACK.ROOF_H + 0.06, 0);
-  g.add(inv);
+  const louvre = mat(0x3a3e44, { roughness: 0.7 });
+  for (const sz of [-1, 1]) {
+    for (let i = 0; i < 6; i++) {
+      const l = box(PACK.L / 6 - 0.12, 0.22, 0.02, louvre, false);
+      l.position.set(-PACK.L / 2 + (PACK.L / 6) * (i + 0.5), PACK.ROOF_H / 2, sz * (PACK.W / 2 + 0.005));
+      g.add(l);
+    }
+  }
   return g;
 }
 
 // ---------- the product: a utility-scale battery pack ----------
+// Inside: a central HV spine (orange busbars) with half-depth modules slid in from both sides.
+const MOD_LEVELS = PACK.LEVELS;
+export const MODULES_PER_PACK = PACK.BAYS * MOD_LEVELS * 2;
+const modBodyGeo = new THREE.BoxGeometry(1, 1, 1);
+const modBodyMat = new THREE.MeshStandardMaterial({ color: 0x2b2f35, metalness: 0.5, roughness: 0.45 });
+const modFrontMat = new THREE.MeshStandardMaterial({ color: COLORS.hvOrange, roughness: 0.5, metalness: 0.1 });
+const modLedMat = new THREE.MeshBasicMaterial({ color: 0x4bff7a, toneMapped: false });
+const _m4 = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _p = new THREE.Vector3();
+const _s = new THREE.Vector3();
+
 export function createMegapack() {
   const group = new THREE.Group();
-  const { L, W, BASE, BODY, BAYS, LEVELS } = PACK;
+  const { L, W, BASE, BODY, BAYS } = PACK;
   const bayW = L / BAYS;
 
   const skid = box(L + 0.2, BASE, W + 0.12, mat(COLORS.darker, { roughness: 0.8 }));
@@ -114,36 +139,66 @@ export function createMegapack() {
   frame.position.y = BASE;
   group.add(frame);
 
-  // Battery modules
-  const modules = [];
-  const modMat = mat(COLORS.module, { metalness: 0.5, roughness: 0.45 });
-  for (let level = 0; level < LEVELS; level++) {
-    for (let bay = 0; bay < BAYS; bay++) {
-      const m = box(bayW - 0.16, 0.56, W - 0.26, modMat);
-      m.position.set(-L / 2 + bayW * (bay + 0.5), BASE + 0.36 + level * 0.65, 0);
-      for (const sz of [-1, 1]) {
-        const led = box(0.32, 0.05, 0.02, glow(COLORS.teal), false);
-        led.position.set(-0.3, 0.18, sz * ((W - 0.26) / 2 + 0.01));
-        m.add(led);
-      }
-      m.visible = false;
-      modules.push(m);
-      group.add(m);
-    }
+  // HV spine: vertical rails at each bay boundary + orange busbars on both faces
+  const hv = [];
+  const railMat = mat(0x8d949c, { metalness: 0.6, roughness: 0.4 });
+  for (let i = 0; i <= BAYS; i++) {
+    const r = box(0.08, BODY - 0.1, 0.1, railMat, false);
+    r.position.set(-L / 2 + i * bayW, BASE + BODY / 2, 0);
+    r.visible = false;
+    hv.push(r);
+    group.add(r);
   }
-
-  // Copper busbars (one per level per side)
-  const busbars = [];
-  const copper = mat(COLORS.copper, { metalness: 0.85, roughness: 0.3 });
-  for (let level = 0; level < LEVELS; level++) {
+  const barMat = mat(COLORS.hvOrange, { roughness: 0.5 });
+  for (let level = 0; level < MOD_LEVELS; level++) {
     for (const sz of [-1, 1]) {
-      const b = box(L - 0.5, 0.06, 0.03, copper);
-      b.position.set(0, BASE + 0.58 + level * 0.65, sz * ((W - 0.26) / 2 + 0.03));
+      const b = box(L - 0.3, 0.07, 0.03, barMat, false);
+      b.position.set(0, BASE + 0.5 + level * 0.65, sz * 0.07);
       b.visible = false;
-      busbars.push(b);
+      hv.push(b);
       group.add(b);
     }
   }
+
+  // Modules: instanced bodies, orange covers and status LEDs; .count reveals them.
+  const depth = W / 2 - 0.2;
+  const slots = [];
+  for (let level = 0; level < MOD_LEVELS; level++) {
+    for (let bay = 0; bay < BAYS; bay++) {
+      for (const side of [-1, 1]) {
+        slots.push({ x: -L / 2 + bayW * (bay + 0.5), y: BASE + 0.36 + level * 0.65, side });
+      }
+    }
+  }
+  const body = new THREE.InstancedMesh(modBodyGeo, modBodyMat, slots.length);
+  const front = new THREE.InstancedMesh(modBodyGeo, modFrontMat, slots.length);
+  const led = new THREE.InstancedMesh(modBodyGeo, modLedMat, slots.length);
+  for (const m of [body, front, led]) {
+    m.count = 0;
+    m.frustumCulled = false;
+    group.add(m);
+  }
+  body.castShadow = front.castShadow = true;
+  const modules = {
+    body, front, led, total: slots.length,
+    // Place module i, slid out from its final position by `out` (0 = seated)
+    place(i, out = 0) {
+      const s = slots[i];
+      const zc = s.side * (0.12 + depth / 2 + out);
+      _q.identity();
+      _m4.compose(_p.set(s.x, s.y, zc), _q, _s.set(bayW - 0.14, 0.56, depth));
+      body.setMatrixAt(i, _m4);
+      _m4.compose(_p.set(s.x, s.y, zc + s.side * (depth / 2 + 0.01)), _q, _s.set(bayW - 0.18, 0.5, 0.02));
+      front.setMatrixAt(i, _m4);
+      _m4.compose(_p.set(s.x - bayW / 2 + 0.2, s.y + 0.18, zc + s.side * (depth / 2 + 0.025)), _q, _s.set(0.06, 0.06, 0.01));
+      led.setMatrixAt(i, _m4);
+      body.instanceMatrix.needsUpdate = front.instanceMatrix.needsUpdate = led.instanceMatrix.needsUpdate = true;
+    },
+    setCount(n) {
+      body.count = front.count = led.count = n;
+    },
+  };
+  slots.forEach((_, i) => modules.place(i));
 
   // Thermal roof
   const roof = createRoof();
@@ -151,26 +206,31 @@ export function createMegapack() {
   roof.visible = false;
   group.add(roof);
 
-  // Enclosure doors + end caps
+  // Doors hang on hinges so they can swing shut as they are fitted; end caps just appear.
   const doors = [];
   const doorMat = mat(COLORS.white, { roughness: 0.5 });
   const handleMat = mat(COLORS.dark);
   for (let bay = 0; bay < BAYS; bay++) {
     for (const sz of [-1, 1]) {
+      const hinge = new THREE.Group();
+      hinge.position.set(-L / 2 + bayW * bay + 0.025, BASE + BODY / 2, sz * (W / 2 + 0.03));
       const d = box(bayW - 0.05, BODY - 0.04, 0.05, doorMat);
-      d.position.set(-L / 2 + bayW * (bay + 0.5), BASE + BODY / 2, sz * (W / 2 + 0.03));
-      const h = box(0.04, 0.32, 0.04, handleMat, false);
-      h.position.set(bayW / 2 - 0.15, 0, sz * 0.04);
-      d.add(h);
-      d.visible = false;
-      doors.push(d);
-      group.add(d);
+      d.position.x = (bayW - 0.05) / 2;
+      hinge.add(d);
+      const h = box(0.04, 0.32, 0.05, handleMat, false);
+      h.position.set(bayW - 0.2, 0, sz * 0.04);
+      hinge.add(h);
+      hinge.visible = false;
+      hinge.userData.side = sz;
+      doors.push(hinge);
+      group.add(hinge);
     }
   }
   for (const sx of [-1, 1]) {
     const cap = box(0.05, BODY - 0.04, W, doorMat);
     cap.position.set(sx * (L / 2 + 0.03), BASE + BODY / 2, 0);
     cap.visible = false;
+    cap.userData.side = 0;
     doors.push(cap);
     group.add(cap);
   }
@@ -187,7 +247,27 @@ export function createMegapack() {
   statusLight.visible = false;
   group.add(statusLight);
 
-  return { group, frame, modules, busbars, roof, doors, coolantLight, statusLight };
+  return { group, frame, hv, modules, roof, doors, coolantLight, statusLight };
+}
+
+// Static stand-in for finished units staged in the outdoor yard
+export function createYard(count, cols, origin) {
+  const g = new THREE.Group();
+  const H = PACK.HEIGHT;
+  const bodies = new THREE.InstancedMesh(new THREE.BoxGeometry(PACK.W, H, PACK.L), mat(COLORS.white, { roughness: 0.45 }), count);
+  const fans = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16), mat(COLORS.dark), count * 10);
+  bodies.castShadow = bodies.receiveShadow = true;
+  let f = 0;
+  for (let i = 0; i < count; i++) {
+    const x = origin[0] + (i % cols) * 4.2;
+    const z = origin[1] + Math.floor(i / cols) * 12;
+    bodies.setMatrixAt(i, _m4.makeTranslation(x, H / 2, z));
+    for (let k = 0; k < 5; k++) {
+      for (const dx of [-0.38, 0.38]) fans.setMatrixAt(f++, _m4.makeTranslation(x + dx, H + 0.02, z - 3 + k * 1.5));
+    }
+  }
+  g.add(bodies, fans);
+  return g;
 }
 
 // ---------- enclosure frame (Body in White) ----------
@@ -248,21 +328,22 @@ export function setFrameMaterial(frame, material) {
 
 // ---------- power & free carrier for the overhead paint conveyor ----------
 export const HANG = 0.6;
-// The hanger (beam + rods) sits in `drop`, which lowers on a cable to pick a frame off the floor.
+// Blue trolley on the rail; the spreader + chains sit in `drop`, which lowers on a cable to
+// pick a frame off the floor.
 export function createCarrier() {
   const group = new THREE.Group();
-  const trolley = box(1.4, 0.32, 0.5, mat(COLORS.dark, { metalness: 0.5 }));
+  const trolley = box(1.4, 0.32, 0.5, mat(COLORS.conveyorBlue, { metalness: 0.4, roughness: 0.4 }));
   trolley.position.y = 0.05;
   group.add(trolley);
   const drop = new THREE.Group();
   group.add(drop);
-  const beam = box(PACK.L * 0.8, 0.14, 0.3, mat(COLORS.yellow));
-  beam.position.y = -HANG + 0.07;
+  const beam = box(PACK.L * 0.8, 0.16, 0.3, mat(0x7c848d, { metalness: 0.6, roughness: 0.4 }));
+  beam.position.y = -0.1;
   drop.add(beam);
   for (const x of [-3.2, 3.2]) {
-    const rod = cyl(0.035, 0.035, HANG, 6, mat(0x111111), false);
-    rod.position.set(x, -HANG / 2, 0);
-    drop.add(rod);
+    const chain = cyl(0.03, 0.03, HANG - 0.1, 5, mat(0x222222, { metalness: 0.8 }), false);
+    chain.position.set(x, -0.1 - (HANG - 0.1) / 2, 0);
+    drop.add(chain);
   }
   const cable = cyl(0.04, 0.04, 1, 6, mat(0x111111), false);
   cable.visible = false;
@@ -271,11 +352,31 @@ export function createCarrier() {
 }
 
 // ---------- battery module tray (output of the module line) ----------
-export const TRAY = { L: 2.4, W: 1.6, BLOCKS: 6, CELLS: 24 };
-const cellGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.32, 10);
-const cellMat = new THREE.MeshStandardMaterial({ color: 0x1f5e57, roughness: 0.45, metalness: 0.3 });
+// 12 modules per tray (4 × 3), each with 12 cells, a weld plate, potting, a lid and a BMS board.
+export const TRAY = { L: 2.4, W: 1.6, MODULES: 12, CELLS_PER: 12 };
 const blockCentres = [];
-for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) blockCentres.push([-0.78 + i * 0.78, -0.38 + j * 0.76]);
+for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) blockCentres.push([-0.87 + i * 0.58, -0.5 + j * 0.5]);
+const unitBox = new THREE.BoxGeometry(1, 1, 1);
+const cellGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.32, 10);
+const trayMats = {
+  cell: new THREE.MeshStandardMaterial({ color: 0x1f5e57, roughness: 0.45, metalness: 0.3 }),
+  weld: new THREE.MeshStandardMaterial({ color: COLORS.copper, metalness: 0.85, roughness: 0.3 }),
+  pot: new THREE.MeshStandardMaterial({ color: 0x6b5a3a, roughness: 0.9 }),
+  lid: new THREE.MeshStandardMaterial({ color: 0x2b2f35, metalness: 0.4, roughness: 0.5 }),
+  pcb: new THREE.MeshStandardMaterial({ color: 0x1f8a4c, roughness: 0.6 }),
+};
+
+function instancedLayer(geo, material, transforms) {
+  const m = new THREE.InstancedMesh(geo, material, transforms.length);
+  transforms.forEach(([x, y, z, sx, sy, sz], i) => {
+    _m4.compose(_p.set(x, y, z), _q.identity(), _s.set(sx, sy, sz));
+    m.setMatrixAt(i, _m4);
+  });
+  m.count = 0;
+  m.frustumCulled = false;
+  m.castShadow = true;
+  return m;
+}
 
 export function createModuleTray() {
   const group = new THREE.Group();
@@ -283,58 +384,30 @@ export function createModuleTray() {
   plate.position.y = 0.04;
   group.add(plate);
 
-  // Cells – one instanced mesh, revealed progressively via .count
-  const cells = new THREE.InstancedMesh(cellGeo, cellMat, TRAY.BLOCKS * TRAY.CELLS);
-  cells.castShadow = true;
-  cells.frustumCulled = false;
-  const m4 = new THREE.Matrix4();
-  let n = 0;
+  const cellT = [];
   for (const [bx, bz] of blockCentres) {
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 6; c++) {
-        cells.setMatrixAt(n++, m4.makeTranslation(bx - 0.27 + c * 0.108, 0.24, bz - 0.17 + r * 0.113));
-      }
-    }
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) cellT.push([bx - 0.18 + c * 0.12, 0.24, bz - 0.13 + r * 0.13, 1, 1, 1]);
   }
-  cells.count = 0;
-  group.add(cells);
+  const cells = instancedLayer(cellGeo, trayMats.cell, cellT);
+  const welds = instancedLayer(unitBox, trayMats.weld, blockCentres.map(([x, z]) => [x, 0.41, z, 0.5, 0.02, 0.42]));
+  const potting = instancedLayer(unitBox, trayMats.pot, blockCentres.map(([x, z]) => [x, 0.44, z, 0.52, 0.05, 0.44]));
+  const lids = instancedLayer(unitBox, trayMats.lid, blockCentres.map(([x, z]) => [x, 0.3, z, 0.54, 0.44, 0.46]));
+  const pcbs = instancedLayer(unitBox, trayMats.pcb, blockCentres.map(([x, z]) => [x, 0.53, z, 0.36, 0.02, 0.28]));
+  group.add(cells, welds, potting, lids, pcbs);
 
-  const welds = [];
-  const potting = [];
-  const lids = [];
-  for (const [bx, bz] of blockCentres) {
-    const w = box(0.66, 0.02, 0.5, mat(COLORS.copper, { metalness: 0.85, roughness: 0.3 }), false);
-    w.position.set(bx, 0.41, bz);
-    w.visible = false;
-    welds.push(w);
-    group.add(w);
-    const p = box(0.7, 0.05, 0.56, mat(0x6b5a3a, { roughness: 0.9 }), false);
-    p.position.set(bx, 0.44, bz);
-    p.visible = false;
-    potting.push(p);
-    group.add(p);
-    const lid = box(0.74, 0.44, 0.7, mat(COLORS.module, { metalness: 0.5, roughness: 0.45 }));
-    lid.position.set(bx, 0.3, bz);
-    const led = box(0.3, 0.04, 0.02, glow(COLORS.teal), false);
-    led.position.set(0, 0.12, 0.36);
-    lid.add(led);
-    lid.visible = false;
-    lids.push(lid);
-    group.add(lid);
-  }
   const statusLight = box(0.04, 0.08, 0.2, new THREE.MeshBasicMaterial({ color: COLORS.amber, toneMapped: false }), false);
   statusLight.position.set(TRAY.L / 2 + 0.02, 0.06, 0);
   statusLight.visible = false;
   group.add(statusLight);
-  return { group, cells, welds, potting, lids, statusLight };
+  return { group, cells, welds, potting, lids, pcbs, statusLight };
 }
 
 // ---------- 6-axis-style industrial robot ----------
-export function createRobot(color = COLORS.red, scale = 1) {
+export function createRobot(color = COLORS.fanuc, scale = 1, toolColor = COLORS.dark) {
   const root = new THREE.Group();
   root.scale.setScalar(scale);
   const body = mat(color, { roughness: 0.4, metalness: 0.2 });
-  const dark = mat(COLORS.dark, { roughness: 0.5, metalness: 0.4 });
+  const dark = mat(0x3a3d42, { roughness: 0.5, metalness: 0.4 });
 
   const base = cyl(0.5, 0.6, 0.5, 24, dark);
   base.position.y = 0.25;
@@ -346,20 +419,27 @@ export function createRobot(color = COLORS.red, scale = 1) {
   const turretMesh = cyl(0.38, 0.42, 0.45, 20, body);
   turretMesh.position.y = 0.22;
   turret.add(turretMesh);
+  const motor = cyl(0.16, 0.16, 0.22, 12, mat(COLORS.weldRed));
+  motor.rotation.z = Math.PI / 2;
+  motor.position.set(0.42, 0.5, 0);
+  turret.add(motor);
 
   const shoulder = new THREE.Group();
   shoulder.position.y = 0.5;
   turret.add(shoulder);
-  const sj = sphere(0.3, dark);
-  shoulder.add(sj);
+  shoulder.add(sphere(0.3, body));
   const upper = box(0.3, 1.8, 0.3, body);
   upper.position.y = 0.9;
   shoulder.add(upper);
+  // Dress pack (cable bundle) along the upper arm
+  const dress = cyl(0.06, 0.06, 1.6, 6, mat(0x1b1d20), false);
+  dress.position.set(0, 0.95, -0.22);
+  shoulder.add(dress);
 
   const elbow = new THREE.Group();
   elbow.position.y = 1.8;
   shoulder.add(elbow);
-  elbow.add(sphere(0.22, dark));
+  elbow.add(sphere(0.22, body));
   const fore = box(0.22, 1.5, 0.22, body);
   fore.position.y = 0.75;
   elbow.add(fore);
@@ -368,7 +448,7 @@ export function createRobot(color = COLORS.red, scale = 1) {
   wrist.position.y = 1.5;
   elbow.add(wrist);
   wrist.add(sphere(0.14, dark));
-  const tool = box(0.18, 0.32, 0.18, dark);
+  const tool = box(0.2, 0.32, 0.2, mat(toolColor));
   tool.position.y = 0.18;
   wrist.add(tool);
   for (const s of [-1, 1]) {
@@ -381,6 +461,37 @@ export function createRobot(color = COLORS.red, scale = 1) {
   wrist.add(tip);
 
   return { root, turret, shoulder, elbow, wrist, tip };
+}
+
+// ---------- lift-assist manipulator (operator-guided arm on a column) ----------
+export function createLiftAssist() {
+  const root = new THREE.Group();
+  const grey = mat(0x9aa1a9, { metalness: 0.6, roughness: 0.4 });
+  const base = box(0.8, 0.12, 0.8, mat(COLORS.dark));
+  base.position.y = 0.06;
+  root.add(base);
+  const column = cyl(0.12, 0.12, 3.2, 12, grey);
+  column.position.y = 1.6;
+  root.add(column);
+  const arm1 = new THREE.Group();
+  arm1.position.y = 3.1;
+  root.add(arm1);
+  const l1 = box(1.5, 0.14, 0.14, grey);
+  l1.position.x = 0.75;
+  arm1.add(l1);
+  const arm2 = new THREE.Group();
+  arm2.position.x = 1.5;
+  arm1.add(arm2);
+  const l2 = box(1.3, 0.12, 0.12, grey);
+  l2.position.x = 0.65;
+  arm2.add(l2);
+  const drop = cyl(0.05, 0.05, 1.4, 8, grey);
+  drop.position.set(1.3, -0.7, 0);
+  arm2.add(drop);
+  const tool = box(0.5, 0.4, 0.35, mat(COLORS.hvOrange));
+  tool.position.set(1.3, -1.55, 0);
+  arm2.add(tool);
+  return { root, arm1, arm2 };
 }
 
 // ---------- flatbed truck ----------
@@ -523,26 +634,63 @@ export function makeWallTexture() {
 }
 
 export function makeFloorTexture() {
+  // Light, polished epoxy-sealed concrete with saw-cut joints
   const c = document.createElement('canvas');
   c.width = c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = '#4a4e54';
+  g.fillStyle = '#aab0b7';
   g.fillRect(0, 0, 512, 512);
-  // subtle concrete noise
   const img = g.getImageData(0, 0, 512, 512);
   for (let i = 0; i < img.data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 10;
+    const n = (Math.random() - 0.5) * 7;
     img.data[i] += n;
     img.data[i + 1] += n;
     img.data[i + 2] += n;
   }
   g.putImageData(img, 0, 0);
-  g.strokeStyle = 'rgba(0,0,0,0.25)';
-  g.lineWidth = 3;
+  g.strokeStyle = 'rgba(80,86,94,0.35)';
+  g.lineWidth = 2;
   g.strokeRect(0, 0, 512, 512);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 8;
+  return tex;
+}
+
+// Insulated-metal-panel wall: white with vertical ribs
+export function makePanelTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e9ecef';
+  g.fillRect(0, 0, 256, 64);
+  for (let x = 0; x < 256; x += 32) {
+    g.fillStyle = '#d5d9de';
+    g.fillRect(x, 0, 4, 64);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// Column grid label (e.g. "G13")
+export function makeLabelTexture(text) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f4f5f6';
+  g.fillRect(0, 0, 128, 256);
+  g.fillStyle = '#2a2d31';
+  g.font = 'bold 84px Inter, system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text[0], 64, 72);
+  g.fillText(text.slice(1), 64, 180);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
