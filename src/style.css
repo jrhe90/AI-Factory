@@ -61,7 +61,8 @@ body.ready #loading { opacity: 0; pointer-events: none; }
 
 /* ---------- stations ---------- */
 #stations { top: 16px; right: 16px; width: 320px; padding: 12px; max-height: calc(100vh - 120px); overflow: auto; }
-.panel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
+.panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 4px 8px; }
+.panel-head h2 { white-space: nowrap; }
 .panel-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .legend { display: flex; gap: 8px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; justify-content: flex-end; }
 .legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -86,6 +87,21 @@ body.ready #loading { opacity: 0; pointer-events: none; }
 .st-fill { display: block; height: 100%; width: 0; background: var(--working); transition: width 0.2s linear; }
 .st-row[data-status='down'] .st-fill { background: var(--down); }
 .st-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); width: 74px; }
+
+/* ---------- line tabs ---------- */
+.tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 10px; }
+.tab {
+  position: relative; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.04); color: var(--muted);
+  font: inherit; font-weight: 500; padding: 6px 8px; border-radius: 7px; cursor: pointer; text-align: left;
+}
+.tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+.tab.active { color: #111; background: var(--text); border-color: var(--text); }
+.tab[data-alert='true']::after {
+  content: ''; position: absolute; top: 7px; right: 8px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--down); animation: pulse 0.5s infinite alternate;
+}
+.kpi b[data-low='true'] { color: var(--blocked); }
+.panel-head h2 { font-variant-numeric: tabular-nums; }
 
 /* ---------- info card ---------- */
 #info { left: 16px; bottom: 84px; width: 300px; padding: 14px 16px; }

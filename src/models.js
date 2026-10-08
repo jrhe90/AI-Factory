@@ -109,21 +109,10 @@ export function createMegapack() {
   skid.position.y = BASE / 2;
   group.add(skid);
 
-  // Steel frame
-  const steel = mat(COLORS.steel, { metalness: 0.6, roughness: 0.4 });
-  for (let i = 0; i <= BAYS; i++) {
-    const x = -L / 2 + i * bayW;
-    for (const sz of [-1, 1]) {
-      const post = box(0.1, BODY, 0.1, steel);
-      post.position.set(THREE.MathUtils.clamp(x, -L / 2 + 0.05, L / 2 - 0.05), BASE + BODY / 2, sz * (W / 2 - 0.05));
-      group.add(post);
-    }
-  }
-  for (const sz of [-1, 1]) {
-    const rail = box(L, 0.1, 0.1, steel);
-    rail.position.set(0, PACK.FRAME_TOP - 0.05, sz * (W / 2 - 0.05));
-    group.add(rail);
-  }
+  // Powder-coated frame (built on the Body-in-White line, painted in the Powder Coat shop)
+  const frame = createFrame(FRAME_MATS.coated);
+  frame.position.y = BASE;
+  group.add(frame);
 
   // Battery modules
   const modules = [];
@@ -198,12 +187,152 @@ export function createMegapack() {
   statusLight.visible = false;
   group.add(statusLight);
 
-  return { group, modules, busbars, roof, doors, coolantLight, statusLight };
+  return { group, frame, modules, busbars, roof, doors, coolantLight, statusLight };
+}
+
+// ---------- enclosure frame (Body in White) ----------
+export const FRAME_H = PACK.BODY + 0.05;
+export const FRAME_MATS = {
+  bare: mat(0x8d949c, { metalness: 0.8, roughness: 0.32 }),
+  pretreat: mat(0x5b636c, { metalness: 0.35, roughness: 0.75 }),
+  powder: mat(0xf2f2ef, { roughness: 1, metalness: 0 }),
+  curing: mat(0xf3e2d2, { roughness: 0.8, emissive: 0xff5a14, emissiveIntensity: 0.45 }),
+  coated: mat(0xdfe2e6, { roughness: 0.55, metalness: 0.1 }),
+};
+
+// Frame parts are grouped so the BIW line can weld them on in stages.
+export function createFrame(material = FRAME_MATS.bare) {
+  const group = new THREE.Group();
+  const { L, W, BODY, BAYS } = PACK;
+  const bayW = L / BAYS;
+  const base = [];
+  const posts = [];
+  const top = [];
+  for (const sz of [-1, 1]) {
+    const r = box(L, 0.12, 0.1, material);
+    r.position.set(0, 0.06, sz * (W / 2 - 0.05));
+    base.push(r);
+  }
+  for (const sx of [-1, 1]) {
+    const c = box(0.1, 0.12, W - 0.2, material);
+    c.position.set(sx * (L / 2 - 0.05), 0.06, 0);
+    base.push(c);
+  }
+  for (let i = 0; i <= BAYS; i++) {
+    const x = THREE.MathUtils.clamp(-L / 2 + i * bayW, -L / 2 + 0.05, L / 2 - 0.05);
+    for (const sz of [-1, 1]) {
+      const p = box(0.1, BODY, 0.1, material);
+      p.position.set(x, BODY / 2, sz * (W / 2 - 0.05));
+      posts.push(p);
+    }
+  }
+  for (const sz of [-1, 1]) {
+    const r = box(L, 0.1, 0.1, material);
+    r.position.set(0, BODY, sz * (W / 2 - 0.05));
+    top.push(r);
+  }
+  for (const sx of [-1, 1]) {
+    const c = box(0.1, 0.1, W - 0.2, material);
+    c.position.set(sx * (L / 2 - 0.05), BODY, 0);
+    top.push(c);
+  }
+  const meshes = [...base, ...posts, ...top];
+  meshes.forEach((m) => group.add(m));
+  group.userData = { base, posts, top, meshes };
+  return group;
+}
+
+export function setFrameMaterial(frame, material) {
+  for (const m of frame.userData.meshes) m.material = material;
+}
+
+// ---------- power & free carrier for the overhead paint conveyor ----------
+export const HANG = 0.6;
+// The hanger (beam + rods) sits in `drop`, which lowers on a cable to pick a frame off the floor.
+export function createCarrier() {
+  const group = new THREE.Group();
+  const trolley = box(1.4, 0.32, 0.5, mat(COLORS.dark, { metalness: 0.5 }));
+  trolley.position.y = 0.05;
+  group.add(trolley);
+  const drop = new THREE.Group();
+  group.add(drop);
+  const beam = box(PACK.L * 0.8, 0.14, 0.3, mat(COLORS.yellow));
+  beam.position.y = -HANG + 0.07;
+  drop.add(beam);
+  for (const x of [-3.2, 3.2]) {
+    const rod = cyl(0.035, 0.035, HANG, 6, mat(0x111111), false);
+    rod.position.set(x, -HANG / 2, 0);
+    drop.add(rod);
+  }
+  const cable = cyl(0.04, 0.04, 1, 6, mat(0x111111), false);
+  cable.visible = false;
+  group.add(cable);
+  return { group, drop, cable };
+}
+
+// ---------- battery module tray (output of the module line) ----------
+export const TRAY = { L: 2.4, W: 1.6, BLOCKS: 6, CELLS: 24 };
+const cellGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.32, 10);
+const cellMat = new THREE.MeshStandardMaterial({ color: 0x1f5e57, roughness: 0.45, metalness: 0.3 });
+const blockCentres = [];
+for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) blockCentres.push([-0.78 + i * 0.78, -0.38 + j * 0.76]);
+
+export function createModuleTray() {
+  const group = new THREE.Group();
+  const plate = box(TRAY.L, 0.08, TRAY.W, mat(COLORS.steel, { metalness: 0.6, roughness: 0.4 }));
+  plate.position.y = 0.04;
+  group.add(plate);
+
+  // Cells – one instanced mesh, revealed progressively via .count
+  const cells = new THREE.InstancedMesh(cellGeo, cellMat, TRAY.BLOCKS * TRAY.CELLS);
+  cells.castShadow = true;
+  cells.frustumCulled = false;
+  const m4 = new THREE.Matrix4();
+  let n = 0;
+  for (const [bx, bz] of blockCentres) {
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 6; c++) {
+        cells.setMatrixAt(n++, m4.makeTranslation(bx - 0.27 + c * 0.108, 0.24, bz - 0.17 + r * 0.113));
+      }
+    }
+  }
+  cells.count = 0;
+  group.add(cells);
+
+  const welds = [];
+  const potting = [];
+  const lids = [];
+  for (const [bx, bz] of blockCentres) {
+    const w = box(0.66, 0.02, 0.5, mat(COLORS.copper, { metalness: 0.85, roughness: 0.3 }), false);
+    w.position.set(bx, 0.41, bz);
+    w.visible = false;
+    welds.push(w);
+    group.add(w);
+    const p = box(0.7, 0.05, 0.56, mat(0x6b5a3a, { roughness: 0.9 }), false);
+    p.position.set(bx, 0.44, bz);
+    p.visible = false;
+    potting.push(p);
+    group.add(p);
+    const lid = box(0.74, 0.44, 0.7, mat(COLORS.module, { metalness: 0.5, roughness: 0.45 }));
+    lid.position.set(bx, 0.3, bz);
+    const led = box(0.3, 0.04, 0.02, glow(COLORS.teal), false);
+    led.position.set(0, 0.12, 0.36);
+    lid.add(led);
+    lid.visible = false;
+    lids.push(lid);
+    group.add(lid);
+  }
+  const statusLight = box(0.04, 0.08, 0.2, new THREE.MeshBasicMaterial({ color: COLORS.amber, toneMapped: false }), false);
+  statusLight.position.set(TRAY.L / 2 + 0.02, 0.06, 0);
+  statusLight.visible = false;
+  group.add(statusLight);
+  return { group, cells, welds, potting, lids, statusLight };
 }
 
 // ---------- 6-axis-style industrial robot ----------
-export function createRobot(color = COLORS.red) {
+export function createRobot(color = COLORS.red, scale = 1) {
   const root = new THREE.Group();
+  root.scale.setScalar(scale);
   const body = mat(color, { roughness: 0.4, metalness: 0.2 });
   const dark = mat(COLORS.dark, { roughness: 0.5, metalness: 0.4 });
 
@@ -346,7 +475,7 @@ export function createWorker(vestColor = 0xff7a1a) {
 }
 
 // ---------- canvas textures ----------
-export function makeSignTexture(num, title) {
+export function makeSignTexture(num, title, line = 'STATION') {
   const c = document.createElement('canvas');
   c.width = 1024;
   c.height = 256;
@@ -365,7 +494,7 @@ export function makeSignTexture(num, title) {
   g.fillText(title, 260, 100, 740);
   g.fillStyle = '#9aa3ad';
   g.font = '500 44px Inter, system-ui, sans-serif';
-  g.fillText('STATION ' + String(num).padStart(2, '0'), 260, 185);
+  g.fillText(line, 260, 185);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;

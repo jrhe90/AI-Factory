@@ -24,7 +24,7 @@
     <div class="brand-mark"></div>
     <div>
       <h1>Megafactory <span>Line 1</span></h1>
-      <p>Utility-scale battery production · live simulation</p>
+      <p>Body in White · Powder Coat · Modules · Pack assembly</p>
     </div>
   </header>
 
@@ -36,12 +36,15 @@
     <div class="kpi"><label>Run-rate</label><b id="k-annual">—</b></div>
     <div class="kpi"><label>Work in progress</label><b id="k-wip">0</b></div>
     <div class="kpi"><label>First-pass yield</label><b id="k-fpy">—</b></div>
+    <div class="kpi"><label>Module stock</label><b id="k-modules">—</b></div>
+    <div class="kpi"><label>Coated frames</label><b id="k-frames">—</b></div>
     <div class="kpi wide"><label>Bottleneck</label><b id="k-bottleneck">—</b></div>
   </section>
 
   <aside class="panel" id="stations">
+    <div id="line-tabs" class="tabs"></div>
     <div class="panel-head">
-      <h2>Stations</h2>
+      <h2 id="line-output">Stations</h2>
       <div class="legend">
         <span data-status="working"><i class="dot"></i>Working</span>
         <span data-status="blocked"><i class="dot"></i>Blocked</span>
@@ -81,8 +84,9 @@
     <div class="group">
       <button class="btn active" data-cam="overview">Overview</button>
       <button class="btn" data-cam="follow">Follow pack</button>
-      <button class="btn" data-cam="modules">Module bay</button>
-      <button class="btn" data-cam="test">Test bay</button>
+      <button class="btn" data-cam="modules">Module line</button>
+      <button class="btn" data-cam="biw">Body in White</button>
+      <button class="btn" data-cam="paint">Powder coat</button>
       <button class="btn" data-cam="shipping">Shipping</button>
     </div>
     <div class="group">

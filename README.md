@@ -4,7 +4,7 @@ A real-time 3D simulation of a utility-scale battery pack production line, inspi
 Tesla's Megafactory (Lathrop, CA). Built with [three.js](https://threejs.org) — no build step,
 no external assets; every model is generated procedurally.
 
-![stations](https://img.shields.io/badge/stations-8-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
+![stations](https://img.shields.io/badge/stations-23-e82127) ![lines](https://img.shields.io/badge/lines-4-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
 
 ## Run it
 
@@ -19,13 +19,57 @@ Then open <http://localhost:8000>.
 
 ## What's simulated
 
-Packs flow down a roller conveyor through eight stations. Each pack is visibly assembled as it goes:
+Four connected lines share one flow engine. Each station holds one unit, and units keep a minimum
+spacing, so a slow or broken station leaves the stations after it with no work (**Starved**) and
+makes the ones before it wait (**Blocked**). Lines hand units to each other, so a problem upstream
+works its way through the plant.
 
+```
+Body in White ──► Powder Coat (overhead conveyor) ──► Pack line ──► Shipping crane ──► Trucks
+                                                         ▲
+Battery Modules ──► Rack warehouse ──► AGVs ─────────────┘ (3 trays per pack)
+```
+
+### Body in White (back of plant)
 | # | Station | What happens |
 |---|---------|--------------|
-| 01 | Chassis Load | Overhead hoist lowers a steel skid/frame onto the line |
-| 02 | Module Install | AGVs ferry modules from the rack warehouse; two robots load 18 modules |
-| 03 | Busbar & HV Wiring | Robots weld copper busbars (sparks) linking modules into HV strings |
+| 01 | Base Frame Weld | Robots weld roll-formed rails into the base frame |
+| 02 | Side Post Weld | 14 vertical posts are welded on |
+| 03 | Roof Rail Weld | Top rails close the frame into a rigid box |
+| 04 | Geometry Check | Laser arch scans the frame against CAD |
+
+### Powder Coat (overhead power-and-free conveyor)
+| # | Station | What happens |
+|---|---------|--------------|
+| 01 | Load & Hang | Frame is lifted off the BIW conveyor onto a carrier |
+| 02 | Pre-treatment Wash | Degrease and conversion coat (spray mist) |
+| 03 | Powder Booth | Spray robots coat the frame white |
+| 04 | Cure Oven | Powder cures at ~200 °C (frame glows while inside) |
+| 05 | Cool & Inspect | Fans cool the frame, then it rides the rail across the plant |
+
+The rail climbs over the warehouse and drops coated frames straight onto the pack line's Chassis Load station.
+Frames waiting on the rail act as the buffer.
+
+### Battery Modules
+| # | Station | What happens |
+|---|---------|--------------|
+| 01 | Cell Intake & Test | Cells are scanned and tested; a tray is indexed onto the line |
+| 02 | Cell Insertion | 144 cells loaded into six module carriers |
+| 03 | Interconnect Weld | Laser welding to copper collector plates (sparks) |
+| 04 | Adhesive & Potting | Dispensing head fills the gaps with potting compound |
+| 05 | Module Enclosure | Lids and sense boards fitted |
+| 06 | Module EOL Test | Isolation and BMS checks; ~3% re-tested |
+
+Finished trays go into the rack warehouse. Each crate on the racks is one tray in stock, up to 56.
+When the racks are full the module line backs up. The pack line's Module Install station takes
+3 trays (18 modules) per pack and is starved if stock runs out.
+
+### Pack line
+| # | Station | What happens |
+|---|---------|--------------|
+| 01 | Chassis Load | Coated frame is lowered off the paint rail onto a steel skid |
+| 02 | Module Install | AGVs bring trays; two robots load 18 modules |
+| 03 | Busbar & HV Wiring | Robots weld copper busbars (sparks) |
 | 04 | Thermal & Inverter | Hoist sets the thermal roof with fans and power electronics |
 | 05 | Enclosure & Doors | Doors and end caps are fitted and welded |
 | 06 | Coolant Fill | Hose drops in, coolant loop is filled and leak-checked |
@@ -34,13 +78,10 @@ Packs flow down a roller conveyor through eight stations. Each pack is visibly a
 
 A gantry crane then lifts each finished pack onto a flatbed truck in a drive-through convoy.
 
-**Flow logic** — each station holds one pack; packs keep a minimum spacing on the conveyor, so a slow
-or faulted station starves the stations downstream and blocks the ones upstream. Station status is
-shown live (Working / Blocked / Starved / Fault) in the side panel and on each gantry beacon.
-
-**Time scale** — 1 simulated second = 4 factory minutes. The End-of-Line test is the bottleneck,
-pacing the line at roughly 1 pack/hour, which at ~3.9 MWh per pack is a ~35–40 GWh/year
-run-rate — the same order as the real factory.
+**Time scale**: 1 simulated second = 4 factory minutes. The pack line's End-of-Line test is the
+plant bottleneck, at roughly 1.1 packs/hour. At ~3.9 MWh per pack that is a ~35–40 GWh/year
+run-rate, the same order as the real factory. The feeder lines run a little faster, so they fill
+their buffers and then wait.
 
 ## Controls
 
@@ -49,17 +90,18 @@ run-rate — the same order as the real factory.
   inject or clear a fault from there
 - **Space** — pause / resume
 - **½× … 8×** — simulation speed
-- **Camera presets** — Overview, Follow pack, Module bay, Test bay, Shipping
+- **Camera presets** — Overview, Follow pack, Module line, Body in White, Powder coat, Shipping
+- **Line tabs** in the station panel switch between the four lines; a red dot marks a line with a fault
 - **Random faults** — toggle random station breakdowns
 
-`window.megafactory` exposes `{ sim, stations }` in the browser console for poking at the model.
+`window.megafactory` exposes `{ sim, lines, stations, moduleStock }` in the browser console for poking at the model.
 
 ## Project layout
 
 ```
 index.html       HUD markup + import map (three.js from jsDelivr)
-src/main.js      scene, line/flow simulation, crane & trucks, camera, UI
-src/models.js    procedural meshes: pack, robot arm, truck, AGV, worker, textures
+src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
+src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, truck, AGV, worker
 src/style.css    HUD styles
 ```
 
