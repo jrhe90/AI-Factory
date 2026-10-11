@@ -4,6 +4,7 @@
 // with points in the object's local space (flow runs along local +x).
 import * as THREE from 'three';
 import { createRobot, createForklift } from '../models.js';
+import { capturedModel } from './captured.js';
 
 const cache = new Map();
 export function mat(color, opts = {}) {
@@ -195,15 +196,33 @@ function queue(p, item) {
 }
 
 function processor(p, item) {
-  const style = p.style ?? 'bench';
-  const w = p.width ?? Math.max(2.0, item.size[0] + 0.8);
-  const d = p.depth ?? Math.max(1.0, item.size[2] + 0.5);
+  const style = p.model ? 'captured' : p.style ?? 'bench';
+  const cm = p.model ? capturedModel(p.model) : null;
+  const w = cm ? cm.size[0] : p.width ?? Math.max(2.0, item.size[0] + 0.8);
+  const d = cm ? cm.size[2] : p.depth ?? Math.max(1.0, item.size[2] + 0.5);
   const g = new THREE.Group();
   const frame = mat(C.frame, { metalness: 0.4 });
   let work;
   let tower;
   let robot = null;
-  if (style === 'machine') {
+  let opZ = d / 2 + 0.5;
+  if (cm) {
+    // Model captured from a photo. Low objects (benches, tables) take the item on top;
+    // taller machines get an in-feed plate at the front. model.json "workPoint" overrides both.
+    const h = cm.size[1];
+    g.add(cm.group);
+    const wp = cm.meta?.workPoint;
+    if (wp) work = new THREE.Vector3(...wp);
+    else if (h <= 1.3) work = new THREE.Vector3(0, h + 0.01, 0);
+    else {
+      const pz = d / 2 + item.size[2] / 2 + 0.15;
+      g.add(box(item.size[0] + 0.3, 0.05, item.size[2] + 0.2, mat(C.top), 0, 0.85, pz));
+      g.add(box(0.08, 0.83, 0.08, frame, 0, 0.415, pz));
+      work = new THREE.Vector3(0, 0.88, pz);
+      opZ = pz + item.size[2] / 2 + 0.5;
+    }
+    tower = lightTower(-w / 2 + 0.1, h, -d / 2 + 0.1);
+  } else if (style === 'machine') {
     // Enclosed machine with a window – test rigs, ovens, presses
     const shell = mat(0xdfe3e8, { roughness: 0.45 });
     g.add(box(w + 0.6, 0.15, d + 0.6, mat(C.dark), 0, 0.075, 0));
@@ -267,14 +286,14 @@ function processor(p, item) {
   for (let i = 0; i < n; i++) {
     const op = makeOperator([0xff7a1a, 0xf2e21a, 0x9be22e][i % 3]);
     const x = n === 1 ? 0 : -w / 2 + 0.4 + (i * (w - 0.8)) / Math.max(1, n - 1);
-    op.position.set(x, 0, d / 2 + 0.5 + (style === 'machine' ? 0.4 : 0));
+    op.position.set(x, 0, opZ + (style === 'machine' ? 0.4 : 0));
     op.rotation.y = Math.PI;
     g.add(op);
     ops.push(op);
   }
   let phase = Math.random() * 10;
   return {
-    group: g, entry: work, exit: work, workPoint: work, height: style === 'machine' ? 2.6 : 2.0,
+    group: g, entry: work, exit: work, workPoint: work, height: cm ? cm.size[1] + 0.6 : style === 'machine' ? 2.6 : 2.0,
     setState: tower.set,
     animate(dt, state) {
       const busy = state === 'busy';
@@ -487,6 +506,12 @@ function zone(p) {
   return { group: g, height: 0, flat: true };
 }
 
+// Equipment captured from a photo (see src/builder/captured.js), placed as a static prop
+function captured(p) {
+  const cm = capturedModel(p.model);
+  return { group: cm.group, height: cm.size[1] };
+}
+
 // Registry: flow objects move items; the rest are equipment/decor
 export const LIBRARY = {
   source: { name: 'Source', flow: true, build: source, icon: '▶' },
@@ -505,13 +530,14 @@ export const LIBRARY = {
   tank: { name: 'Tank', build: tank, icon: '◯' },
   fence: { name: 'Fence', build: fence, icon: '┆' },
   zone: { name: 'Zone', build: zone, icon: '⬚' },
+  captured: { name: 'Captured', build: captured, icon: '◈', hidden: true }, // added from the Captured section
 };
 
 // Editable properties per type: [key, label, kind, extra]
 export const PROPS = {
   source: [['label', 'Name', 'text'], ['interarrival', 'Arrival every (s)', 'number'], ['itemColor', 'Item colour', 'color']],
   queue: [['label', 'Name', 'text'], ['capacity', 'Capacity', 'number']],
-  processor: [['label', 'Name', 'text'], ['time', 'Cycle time (s)', 'number'], ['style', 'Style', 'select', ['bench', 'machine', 'cell']], ['operators', 'Operators', 'number'], ['failRate', 'Faults per hour', 'number']],
+  processor: [['label', 'Name', 'text'], ['time', 'Cycle time (s)', 'number'], ['style', 'Style', 'select', ['bench', 'machine', 'cell']], ['model', 'Captured model', 'captured'], ['operators', 'Operators', 'number'], ['failRate', 'Faults per hour', 'number']],
   conveyor: [['label', 'Name', 'text'], ['length', 'Length (m)', 'number'], ['speed', 'Speed (m/s)', 'number']],
   sink: [['label', 'Name', 'text']],
   rack: [['label', 'Name', 'text'], ['bays', 'Bays', 'number'], ['levels', 'Levels', 'number']],
@@ -520,4 +546,5 @@ export const PROPS = {
   operator: [['label', 'Name', 'text'], ['task', 'Pose', 'select', ['idle', 'work']]],
   tank: [['label', 'Name', 'text'], ['color', 'Colour', 'color']],
   pallet: [['layers', 'Layers', 'number']],
+  captured: [['label', 'Name', 'text'], ['model', 'Captured model', 'captured']],
 };

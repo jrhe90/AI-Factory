@@ -3,6 +3,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LIBRARY, PROPS } from './objects.js';
+import { loadCaptured, capturedList, capturedMeta } from './captured.js';
+
+// Labels and captured model names can come from the phone capture form or a pasted layout,
+// so escape them before using innerHTML
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const STORE_KEY = 'line-builder-layout-v1';
 const DEG = Math.PI / 180;
@@ -548,8 +553,8 @@ function newId(type) {
   while (layout.objects.some((o) => o.id === `${p}${i}`)) i++;
   return `${p}${i}`;
 }
-function addObject(type) {
-  const cfg = { id: newId(type), type, x: snap(controls.target.x), z: snap(controls.target.z), rot: 0, ...JSON.parse(JSON.stringify(DEFAULTS[type] ?? {})) };
+function addObject(type, extra = {}) {
+  const cfg = { id: newId(type), type, x: snap(controls.target.x), z: snap(controls.target.z), rot: 0, ...JSON.parse(JSON.stringify(DEFAULTS[type] ?? {})), ...extra };
   layout.objects.push(cfg);
   commit(cfg.id);
 }
@@ -628,11 +633,18 @@ function renderProps() {
   const row = ([key, label, kind, opts]) => {
     const v = cfg[key] ?? '';
     const id = `p-${key}`;
-    if (!ui.edit) return `<div class="kv"><span>${label}</span><b>${v === '' ? '—' : v}</b></div>`;
+    if (!ui.edit) return `<div class="kv"><span>${label}</span><b>${v === '' ? '—' : kind === 'captured' ? esc(capturedMeta(v)?.name ?? v) : esc(v)}</b></div>`;
+    if (kind === 'captured') {
+      const models = capturedList();
+      if (!models.length && !v) return '';
+      const opt = (slug, name) => `<option value="${esc(slug)}" ${slug === v ? 'selected' : ''}>${esc(name)}</option>`;
+      const missing = v && !capturedMeta(v) ? opt(v, `${v} (missing)`) : '';
+      return `<label class="field"><span>${label}</span><select id="${id}" data-key="${key}" data-kind="captured">${opt('', 'None')}${models.map((m) => opt(m.slug, m.name)).join('')}${missing}</select></label>`;
+    }
     if (kind === 'select') {
       return `<label class="field"><span>${label}</span><select id="${id}" data-key="${key}">${opts.map((o) => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select></label>`;
     }
-    return `<label class="field"><span>${label}</span><input id="${id}" data-key="${key}" data-kind="${kind}" type="${kind}" value="${v}" ${kind === 'number' ? 'step="any"' : ''}></label>`;
+    return `<label class="field"><span>${label}</span><input id="${id}" data-key="${key}" data-kind="${kind}" type="${kind}" value="${esc(v)}" ${kind === 'number' ? 'step="any"' : ''}></label>`;
   };
   const stats = n.def.flow && !ui.edit ? statBlock(n) : '';
   const links = n.def.flow
@@ -640,7 +652,7 @@ function renderProps() {
     : '';
   box.innerHTML = `
     <div class="props-head"><small>${LIBRARY[cfg.type]?.name ?? cfg.type} · ${cfg.id}</small><button id="p-close" aria-label="Close">×</button></div>
-    <h3>${cfg.label ?? cfg.id}</h3>
+    <h3>${esc(cfg.label ?? cfg.id)}</h3>
     ${stats}
     ${fields.map(row).join('')}
     ${ui.edit ? `<div class="xyz">${['x', 'z', 'rot'].map((k) => `<label class="field"><span>${k === 'rot' ? 'Rotation°' : k.toUpperCase() + ' (m)'}</span><input data-key="${k}" data-kind="number" type="number" step="any" value="${cfg[k]}"></label>`).join('')}</div>` : ''}
@@ -653,6 +665,7 @@ function renderProps() {
       const key = el.dataset.key;
       let val = el.value;
       if (el.dataset.kind === 'number') val = val === '' ? undefined : Number(val);
+      if (el.dataset.kind === 'captured' && val === '') val = undefined;
       if (val === undefined) delete cfg[key];
       else cfg[key] = val;
       commit();
@@ -771,11 +784,23 @@ $('btn-3d').onclick = () => {
   camera.position.set(t.x - 18, 30, t.z + 40);
 };
 
-const palette = $('palette');
-palette.innerHTML = Object.entries(LIBRARY)
-  .map(([type, d]) => `<button class="pal" data-type="${type}" title="Add ${d.name}"><span>${d.icon}</span>${d.name}</button>`)
-  .join('');
-palette.querySelectorAll('.pal').forEach((b) => b.addEventListener('click', () => addObject(b.dataset.type)));
+// Captured models (photo → img2threejs) get their own section; stations join the flow,
+// equipment is placed as a prop.
+function renderPalette() {
+  const palette = $('palette');
+  const captured = capturedList();
+  palette.innerHTML = Object.entries(LIBRARY)
+    .filter(([, d]) => !d.hidden)
+    .map(([type, d]) => `<button class="pal" data-type="${type}" title="Add ${d.name}"><span>${d.icon}</span>${d.name}</button>`)
+    .join('')
+    + (captured.length ? `<h2 class="pal-head">Captured</h2>${captured.map((m) => `<button class="pal" data-model="${esc(m.slug)}" title="Add ${esc(m.name)} (${esc(m.role)})"><span>${m.role === 'station' ? '⚙' : '◈'}</span>${esc(m.name)}</button>`).join('')}` : '');
+  palette.querySelectorAll('.pal').forEach((b) => b.addEventListener('click', () => {
+    const m = b.dataset.model && capturedMeta(b.dataset.model);
+    if (!m) addObject(b.dataset.type);
+    else if (m.role === 'station') addObject('processor', { label: m.name, model: m.slug });
+    else addObject('captured', { label: m.name, model: m.slug });
+  }));
+}
 
 const modal = $('modal');
 $('btn-export').onclick = () => {
@@ -866,7 +891,9 @@ function frame() {
   } catch {
     saved = null;
   }
-  layout = normalize(saved?.objects ? saved : await loadExample());
+  const [example] = await Promise.all([saved?.objects ? null : loadExample(), loadCaptured()]);
+  layout = normalize(saved?.objects ? saved : example);
+  renderPalette();
   build();
   renderStats();
   document.body.classList.add('ready');

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#14171b" />
+  <title>Object Capture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="./src/capture/capture.css" />
+</head>
+<body>
+  <main>
+    <header class="title">
+      <div class="mark"></div>
+      <div><h1>Object Capture</h1><p>Photograph line equipment and turn it into a 3D model for the Line Builder</p></div>
+    </header>
+
+    <form id="form" novalidate>
+      <section class="card">
+        <h2>1 · Photos</h2>
+        <p class="muted">One photo works. Two or three views from different sides (front, side, three-quarter) give a much better model. Fill the frame, avoid strong backlight.</p>
+        <div id="shots"></div>
+        <label class="btn primary big" for="camera">📷 Take photo</label>
+        <input id="camera" type="file" accept="image/*" capture="environment" hidden />
+        <label class="btn" for="gallery">Choose from library</label>
+        <input id="gallery" type="file" accept="image/*" multiple hidden />
+      </section>
+
+      <section class="card">
+        <h2>2 · Details</h2>
+        <label class="field"><span>Name</span><input id="name" required placeholder="e.g. Torque station 3" autocomplete="off" /></label>
+        <fieldset class="field">
+          <legend>Approximate size (metres) – sets the real-world scale</legend>
+          <div class="dims">
+            <label><span>Width</span><input id="w" type="number" inputmode="decimal" step="any" min="0" placeholder="2.0" /></label>
+            <label><span>Height</span><input id="h" type="number" inputmode="decimal" step="any" min="0" placeholder="1.8" /></label>
+            <label><span>Depth</span><input id="d" type="number" inputmode="decimal" step="any" min="0" placeholder="1.2" /></label>
+          </div>
+        </fieldset>
+        <fieldset class="field">
+          <legend>Use in the Line Builder as</legend>
+          <div class="seg">
+            <label><input type="radio" name="role" value="station" checked /><span>Station<small>items stop here for a cycle</small></span></label>
+            <label><input type="radio" name="role" value="equipment" /><span>Equipment<small>placed as a static prop</small></span></label>
+          </div>
+        </fieldset>
+        <label class="field"><span>Notes (optional)</span><textarea id="notes" rows="3" placeholder="Where the part sits, which side the operator stands on, moving parts…"></textarea></label>
+      </section>
+
+      <button class="btn accent big" id="submit" type="submit" disabled>Upload capture</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section class="card">
+      <h2>Captures</h2>
+      <div id="list"><p class="muted">Loading…</p></div>
+      <p class="muted small">Pending captures are turned into models by running the <code>photo-to-model</code> skill in Claude Code on the computer serving this page. Modelled ones appear in the Line Builder library.</p>
+    </section>
+  </main>
+  <script type="module" src="./src/capture/capture.js"></script>
+</body>
+</html>

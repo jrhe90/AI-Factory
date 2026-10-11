@@ -163,6 +163,53 @@ Positions are in metres. `rot` is in degrees; flow runs along the object's local
 `rot: 90` points it toward +z. Times are simulated seconds. Movers (AGV, forklift, operator) follow
 a `path`, either looping or back and forth with `"pingpong": true`.
 
+## Photo → 3D model (img2threejs)
+
+Photograph a piece of equipment on the line with your phone and get a procedural three.js model of it
+in the Line Builder library. The reconstruction is done by
+[img2threejs](https://github.com/img2threejs/img2threejs), an agent skill: Claude Code looks at the
+photo and writes code that builds the object from primitives (no photogrammetry, no mesh files).
+It runs on your computer in Claude Code, not on the phone.
+
+```
+Phone ──capture.html──► tools/capture-server.mjs ──► captures/<slug>/  (photos + size + role)
+                                                          │  Claude Code: photo-to-model skill
+                                                          ▼  (runs img2threejs → TypeScript factory)
+builder.html ◄── models/captured/index.json ◄── tools/register-model.mjs
+```
+
+1. **Serve the repo with the capture server** (Node 18+, no dependencies):
+   ```bash
+   node tools/capture-server.mjs
+   ```
+   It prints a LAN address. Open `http://<computer-ip>:8000/capture.html` on a phone on the same Wi-Fi.
+   There is no authentication, so only run it on a network you trust.
+2. **Capture**: take one or more photos (front, side and three-quarter views give a much better
+   model), name the object, enter its approximate size in metres (a photo alone has no scale), and
+   choose **Station** (items stop there for a cycle) or **Equipment** (static prop). Uploads go to
+   `captures/<slug>/`, which git ignores by default because factory photos are often confidential.
+3. **Model it**: in Claude Code, in this repo, ask *"model the pending captures"* (or run
+   `/photo-to-model`). The project skill in `.claude/skills/photo-to-model/` installs img2threejs if
+   needed (`npx --yes img2threejs@latest install --host claude`). It then runs img2threejs's staged,
+   screenshot-checked pipeline with this repo's constraints (metres, real-time budget, front facing
+   +Z) and registers the result.
+4. **Use it**: in `builder.html`, choose **Edit layout**. Captured models appear under **Captured**
+   in the library. Any station can also switch its body to a captured model in the property panel.
+
+In a layout, a captured station is a normal processor with a `model` field, so cycle times, faults
+and blocked/starved stats all work as usual. Equipment uses the `captured` type:
+
+```json
+{ "id": "ST20", "type": "processor", "label": "Torque station", "model": "torque-station-3", "x": 0, "z": 0, "time": 55, "next": ["SNK"] },
+{ "id": "CAP1", "type": "captured", "label": "Parts washer", "model": "parts-washer", "x": 4, "z": -5 }
+```
+
+`tools/register-model.mjs <slug> <factory.ts>` can also register any hand-written factory that returns a
+`THREE.Group`. It strips the TypeScript with esbuild and records the name, role, size and yaw in
+`models/captured/<slug>/model.json`. The builder scales each model to fit that size and stands it on
+the floor. A model that fails to load shows as an orange placeholder box. Models built from one
+photo are approximate: sides the camera didn't see are guessed.
+
 ## Controls
 
 - **Drag / scroll** — orbit and zoom
@@ -181,8 +228,13 @@ a `path`, either looping or back and forth with `"pingpong": true`.
 ```
 index.html       Megafactory simulation page
 builder.html     Line Builder page (generic objects + layout editor)
+capture.html     phone page for photographing equipment (served by tools/capture-server.mjs)
 layouts/         example layouts for the Line Builder
-src/builder/     Line Builder object library, flow engine and editor
+models/captured/ models generated from photos, plus index.json (the registry the builder loads)
+tools/           capture-server.mjs (LAN upload + static server), register-model.mjs (TS factory → builder)
+.claude/skills/  photo-to-model: Claude Code skill that runs img2threejs on a capture
+src/builder/     Line Builder object library, flow engine and editor; captured.js loads captured models
+src/capture/     capture page script and styles
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
 src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
 src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping

@@ -42,6 +42,7 @@ body.editing #library { display: block; }
 .pal { display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid transparent; background: rgba(255, 255, 255, 0.04); color: var(--text); font: inherit; text-align: left; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
 .pal:hover { border-color: var(--border); background: rgba(255, 255, 255, 0.1); }
 .pal span { width: 18px; text-align: center; color: var(--accent); }
+#library .pal-head { grid-column: 1 / -1; margin: 10px 0 4px; }
 
 #side { top: 76px; right: 12px; width: 270px; padding: 12px; max-height: calc(100vh - 100px); overflow: auto; }
 body.editing #side { display: none; }
