@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Motor Plant Digital Twin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
+  <link rel="stylesheet" href="./src/motors/motors.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="loading"><div class="ld-mark">ABB</div><span>Building the motor plant…</span></div>
+
+  <header class="panel" id="brand">
+    <a href="./index.html" class="back" title="All demos" aria-label="All demos">‹</a>
+    <div class="abb">ABB</div>
+    <div>
+      <h1>Motor Plant <span>· Digital Twin</span></h1>
+      <p>Baldor-Reliance · Fort Smith, AR</p>
+    </div>
+  </header>
+
+  <section class="panel" id="kpis">
+    <div class="kpi wide"><label>Factory clock</label><b id="k-clock">—</b></div>
+    <div class="kpi"><label>Motors built</label><b id="k-built">0</b></div>
+    <div class="kpi"><label>Output (plan 50/h)</label><b id="k-rate">—</b></div>
+    <div class="kpi"><label>OEE</label><b id="k-oee">—</b></div>
+    <div class="kpi"><label>First-pass yield</label><b id="k-fpy">—</b></div>
+    <div class="kpi"><label>Plant power</label><b id="k-kw">—</b></div>
+    <div class="kpi"><label>Energy / motor</label><b id="k-kwh">—</b></div>
+    <div class="kpi"><label>Motors shipped</label><b id="k-shipped">0</b></div>
+    <div class="kpi"><label>AI alerts open</label><b id="k-alerts">0</b></div>
+    <div class="kpi wide"><label>Finished-goods pallets</label><b id="k-fg">—</b></div>
+    <div class="kpi"><label>Unplanned stops</label><b id="k-down">0 min</b></div>
+    <div class="kpi ai"><label>Avoided by AI</label><b id="k-avoided">0 min</b></div>
+  </section>
+
+  <aside class="panel" id="side">
+    <div class="seg">
+      <button class="active" data-panel="lines">Lines</button>
+      <button data-panel="ai">AI insights <i id="ai-badge" hidden></i></button>
+      <button data-panel="copilot">✦ Copilot</button>
+    </div>
+
+    <div class="pane" id="pane-lines">
+      <div id="line-tabs" class="tabs"></div>
+      <div class="panel-head">
+        <h2 id="line-output">Stations</h2>
+        <div class="legend">
+          <span data-status="working"><i class="dot"></i>Working</span>
+          <span data-status="blocked"><i class="dot"></i>Blocked</span>
+          <span data-status="idle"><i class="dot"></i>Starved</span>
+          <span data-status="down"><i class="dot"></i>Fault</span>
+        </div>
+      </div>
+      <div id="station-list"></div>
+      <h2 class="sub">Sub-assembly stock</h2>
+      <div id="stocks"></div>
+    </div>
+
+    <div class="pane" id="pane-ai" hidden></div>
+
+    <div class="pane" id="pane-copilot" hidden>
+      <div id="chat-log"></div>
+      <div class="chips">
+        <button class="chip" data-q="Why is output below plan?">Why is output below plan?</button>
+        <button class="chip" data-q="What will fail next?">What will fail next?</button>
+        <button class="chip" data-q="Where is the bottleneck?">Bottleneck?</button>
+        <button class="chip" data-q="How is quality trending?">Quality</button>
+        <button class="chip" data-q="How much energy are we using?">Energy</button>
+        <button class="chip" data-q="Summarise the shift">Shift summary</button>
+      </div>
+      <form id="chat-form">
+        <input id="chat-input" autocomplete="off" placeholder="Ask about the plant…" />
+        <button class="btn primary" type="submit">Ask</button>
+      </form>
+      <details id="api">
+        <summary>Connect Claude (optional)</summary>
+        <p>Paste your own Anthropic API key to have Claude answer open-ended questions from the live plant data. The key is kept in this browser and sent only to api.anthropic.com.</p>
+        <div class="row">
+          <input id="api-key" type="password" placeholder="sk-ant-…" autocomplete="off" />
+          <button class="btn sm" id="api-save" type="button">Save</button>
+          <button class="btn sm ghost" id="api-clear" type="button">Clear</button>
+        </div>
+        <small id="api-state"></small>
+      </details>
+    </div>
+  </aside>
+
+  <section class="panel" id="info" hidden>
+    <button id="info-close" aria-label="Close">×</button>
+    <small id="info-num"></small>
+    <h3 id="info-name"></h3>
+    <p id="info-desc"></p>
+    <dl>
+      <div><dt>Status</dt><dd><span class="pill" id="info-status"></span></dd></div>
+      <div><dt>Cycle time</dt><dd id="info-cycle"></dd></div>
+      <div><dt>Processed</dt><dd id="info-done"></dd></div>
+      <div><dt>Utilisation</dt><dd id="info-util"></dd></div>
+      <div><dt>Downtime</dt><dd id="info-down"></dd></div>
+      <div><dt>Current unit</dt><dd id="info-unit"></dd></div>
+    </dl>
+    <p id="info-cause"></p>
+    <div id="info-ai">
+      <div class="ai-head"><span class="ai-tag">AI</span> Condition monitoring</div>
+      <dl class="four">
+        <div><dt>Health</dt><dd id="info-health"></dd></div>
+        <div><dt>Vibration</dt><dd id="info-vib"></dd></div>
+        <div><dt>Temp</dt><dd id="info-temp"></dd></div>
+        <div><dt>Power</dt><dd id="info-kw"></dd></div>
+      </dl>
+      <canvas id="info-spark"></canvas>
+      <div class="spark-key"><span class="h">health</span><span class="v">vibration</span><span class="t">alert threshold</span></div>
+      <div class="rul"><span>Prediction</span><b id="info-rul"></b></div>
+      <button id="info-maint" class="btn primary wide">Schedule maintenance</button>
+    </div>
+    <button id="info-fault" class="btn danger wide">Inject fault</button>
+  </section>
+
+  <div id="feed">
+    <div class="feed-head">
+      <span class="live"></span><span id="feed-title">CAM 01 · VISION QC</span>
+      <span class="feed-sel"><button class="active" data-feed="A">A</button><button data-feed="B">B</button></span>
+    </div>
+    <div id="feed-view"><div id="feed-boxes"></div><div id="feed-verdict" data-state="idle">WAITING FOR PART</div></div>
+    <div id="feed-stats"></div>
+  </div>
+
+  <nav class="panel" id="controls">
+    <div class="group">
+      <button id="play" class="btn">❚❚ Pause</button>
+      <button class="btn" data-speed="0.5">½×</button>
+      <button class="btn active" data-speed="1">1×</button>
+      <button class="btn" data-speed="2">2×</button>
+      <button class="btn" data-speed="4">4×</button>
+      <button class="btn" data-speed="8">8×</button>
+    </div>
+    <div class="group cams">
+      <button class="btn active" data-cam="overview">Overview</button>
+      <button class="btn" data-cam="plan">Plan</button>
+      <button class="btn" data-cam="assembly">Assembly</button>
+      <button class="btn" data-cam="stator">Stator & VPI</button>
+      <button class="btn" data-cam="east">East lines</button>
+      <button class="btn" data-cam="press">Press</button>
+      <button class="btn" data-cam="logistics">Logistics</button>
+      <button class="btn" data-cam="rewind">Rewinding</button>
+      <button class="btn" data-cam="shipping">Shipping</button>
+      <button class="btn" data-cam="follow">Follow motor</button>
+      <button class="btn accent" data-cam="tour">▶ Tour</button>
+    </div>
+    <div class="group">
+      <label class="select">Heatmap
+        <select id="heatmap">
+          <option value="off">Off</option>
+          <option value="util">Utilisation</option>
+          <option value="energy">Power</option>
+          <option value="wip">Blocking</option>
+          <option value="health">Failure risk</option>
+        </select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="labels" checked /> Labels</label>
+      <label class="toggle"><input type="checkbox" id="legend" /> Plan colours</label>
+      <label class="toggle"><input type="checkbox" id="feed-toggle" checked /> Vision feed</label>
+      <label class="toggle"><input type="checkbox" id="faults" checked /> Random faults</label>
+      <label class="toggle ai"><input type="checkbox" id="autopilot" /> AI autopilot</label>
+      <button class="btn" id="panel-toggle">Panel</button>
+    </div>
+  </nav>
+
+  <div class="panel key" id="legend-key" hidden>
+    <span><i style="background:#22a855"></i>Rack / storage</span>
+    <span><i style="background:#2f7fe0"></i>Workstation / machine</span>
+    <span><i style="background:#f07a1a"></i>Raw material / WIP</span>
+    <span><i style="background:#ffd21f"></i>Finished goods / pallet</span>
+    <span><i style="background:#ef2b2b"></i>Fire extinguisher</span>
+    <span><i class="dash blue"></i>Assembly area</span>
+    <span><i class="dash orange"></i>Secondary processes</span>
+  </div>
+  <div class="panel key" id="heat-key" hidden>
+    <b id="heat-key-title">Heatmap</b>
+    <span class="ramp"></span>
+    <span class="ends"><small>low</small><small>high</small></span>
+  </div>
+
+  <div id="toasts"></div>
+  <footer id="disclaimer">Illustrative demo inspired by ABB's Baldor-Reliance motor manufacturing. All data is simulated. Not affiliated with or endorsed by ABB.</footer>
+
+  <script type="module" src="./src/motors/main.js"></script>
+</body>
+</html>

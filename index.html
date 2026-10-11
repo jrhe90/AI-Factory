@@ -3,106 +3,80 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Megafactory Line Simulator</title>
+  <title>AI Factory Demos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="./src/style.css" />
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
+  <style>
+    :root { --bg: #0f1216; --card: #171b21; --border: rgba(255, 255, 255, 0.08); --text: #eef0f2; --muted: #9aa3ad; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(1200px 600px at 20% -10%, #1d2330, transparent), var(--bg); color: var(--text); font: 15px/1.5 Inter, system-ui, sans-serif; }
+    main { max-width: 1180px; margin: 0 auto; padding: 56px 24px 40px; }
+    header h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 42px); font-weight: 800; letter-spacing: -0.02em; }
+    header p { margin: 0; color: var(--muted); max-width: 680px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; margin-top: 36px; }
+    .card { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; color: inherit; text-decoration: none; transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; }
+    .card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.2); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4); }
+    .card.featured { grid-column: 1 / -1; display: grid; grid-template-columns: 1.5fr 1fr; }
+    .shot { aspect-ratio: 16 / 9; background: #0b0d10 center / cover no-repeat; border-bottom: 1px solid var(--border); }
+    .featured .shot { aspect-ratio: auto; min-height: 340px; border-bottom: 0; border-right: 1px solid var(--border); }
+    .body { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+    .featured .body { padding: 28px; justify-content: center; }
+    .tag { align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; background: rgba(255, 255, 255, 0.07); color: var(--muted); }
+    .tag.new { background: #ff000f; color: #fff; }
+    h2 { margin: 0; font-size: 20px; }
+    .featured h2 { font-size: 28px; letter-spacing: -0.01em; }
+    .body p { margin: 0; color: var(--muted); font-size: 14px; }
+    ul { margin: 2px 0 0; padding-left: 18px; color: #c9ced6; font-size: 13.5px; }
+    li { margin: 3px 0; }
+    .go { margin-top: 6px; font-weight: 600; color: #fff; }
+    .ai { color: #c4b5fd; }
+    footer { margin-top: 40px; color: #6b7280; font-size: 12px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 820px) { .card.featured { grid-template-columns: 1fr; } .featured .shot { min-height: 220px; border-right: 0; border-bottom: 1px solid var(--border); } }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
-  <div id="loading">Building factory…</div>
-
-  <header class="panel" id="brand">
-    <div class="brand-mark"></div>
-    <div>
-      <h1>Megafactory <span>Line 1</span></h1>
-      <p>Body in White · Powder Coat · Modules · Pack assembly</p>
+  <main>
+    <header>
+      <h1>AI Factory</h1>
+      <p>Real-time 3D digital twins of manufacturing plants. Every model is generated in the browser with three.js, with no assets and no build step. Lines, machines, people and vehicles run on a live flow simulation, with an AI layer on top.</p>
+    </header>
+    <div class="grid">
+      <a class="card featured" href="./motors.html">
+        <div class="shot" style="background-image: url('./assets/motors.jpg')"></div>
+        <div class="body">
+          <span class="tag new">New · AI digital twin</span>
+          <h2>Electric Motor Plant</h2>
+          <p>Modelled on ABB's Baldor-Reliance motor manufacturing. The plant layout follows a real floor plan: secondary processes, assembly area, east machining lines, warehouses, rewinding shop and welfare block.</p>
+          <ul>
+            <li>9 lines and 48 stations: stamping, die-casting, CNC, winding, VPI, run test, paint and pack</li>
+            <li>Forklifts, a tugger train, AGVs, trucks and dozens of animated people</li>
+            <li class="ai">AI predictive maintenance, vision QC camera feed, energy and risk heatmaps</li>
+            <li class="ai">Plant copilot that answers from live data, with optional Claude API</li>
+          </ul>
+          <span class="go">Open the motor plant →</span>
+        </div>
+      </a>
+      <a class="card" href="./megafactory.html">
+        <div class="shot" style="background-image: url('./assets/megafactory.jpg')"></div>
+        <div class="body">
+          <span class="tag">Battery storage</span>
+          <h2>Megafactory Line Simulator</h2>
+          <p>A utility-scale battery pack plant with Body in White, powder coat, modules and pack assembly. Straddle carriers move the packs to a storage lot and onto trucks.</p>
+          <span class="go">Open →</span>
+        </div>
+      </a>
+      <a class="card" href="./builder.html">
+        <div class="shot" style="background-image: url('./assets/builder.jpg')"></div>
+        <div class="body">
+          <span class="tag">Tool</span>
+          <h2>Line Builder</h2>
+          <p>Lay out any line from generic FlexSim-style objects: sources, stations, conveyors, AGVs, operators and racks. Then simulate it and export the result as JSON.</p>
+          <span class="go">Open →</span>
+        </div>
+      </a>
     </div>
-  </header>
-
-  <section class="panel" id="kpis">
-    <div class="kpi wide"><label>Factory clock</label><b id="k-clock">—</b></div>
-    <div class="kpi"><label>Packs shipped</label><b id="k-shipped">0</b></div>
-    <div class="kpi"><label>Energy shipped</label><b id="k-energy">0</b></div>
-    <div class="kpi"><label>Takt · target 68 min</label><b id="k-rate">—</b></div>
-    <div class="kpi"><label>Run-rate</label><b id="k-annual">—</b></div>
-    <div class="kpi"><label>Work in progress</label><b id="k-wip">0</b></div>
-    <div class="kpi"><label>First-pass yield</label><b id="k-fpy">—</b></div>
-    <div class="kpi"><label>Module stock</label><b id="k-modules">—</b></div>
-    <div class="kpi"><label>Coated frames</label><b id="k-frames">—</b></div>
-    <div class="kpi"><label>Storage lot</label><b id="k-lot">—</b></div>
-    <div class="kpi"><label>Outbound trucks</label><b id="k-trucks">—</b></div>
-    <div class="kpi wide"><label>Bottleneck</label><b id="k-bottleneck">—</b></div>
-  </section>
-
-  <aside class="panel" id="stations">
-    <div id="line-tabs" class="tabs"></div>
-    <div class="panel-head">
-      <h2 id="line-output">Stations</h2>
-      <div class="legend">
-        <span data-status="working"><i class="dot"></i>Working</span>
-        <span data-status="blocked"><i class="dot"></i>Blocked</span>
-        <span data-status="idle"><i class="dot"></i>Starved</span>
-        <span data-status="down"><i class="dot"></i>Fault</span>
-      </div>
-    </div>
-    <div id="station-list"></div>
-  </aside>
-
-  <section class="panel" id="info" hidden>
-    <button id="info-close" aria-label="Close">×</button>
-    <small id="info-num"></small>
-    <h3 id="info-name"></h3>
-    <p id="info-desc"></p>
-    <dl>
-      <div><dt>Status</dt><dd><span class="pill" id="info-status"></span></dd></div>
-      <div><dt>Cycle time</dt><dd id="info-cycle"></dd></div>
-      <div><dt>Processed</dt><dd id="info-done"></dd></div>
-      <div><dt>Utilization</dt><dd id="info-util"></dd></div>
-      <div><dt>Downtime</dt><dd id="info-down"></dd></div>
-      <div><dt>Current pack</dt><dd id="info-unit"></dd></div>
-    </dl>
-    <button id="info-fault" class="btn danger">Inject fault</button>
-  </section>
-
-  <nav class="panel" id="controls">
-    <div class="group">
-      <button id="play" class="btn">❚❚ Pause</button>
-      <span class="sep"></span>
-      <button class="btn" data-speed="0.5">½×</button>
-      <button class="btn active" data-speed="1">1×</button>
-      <button class="btn" data-speed="2">2×</button>
-      <button class="btn" data-speed="4">4×</button>
-      <button class="btn" data-speed="8">8×</button>
-    </div>
-    <div class="group">
-      <button class="btn active" data-cam="overview">Overview</button>
-      <button class="btn" data-cam="follow">Follow pack</button>
-      <button class="btn" data-cam="modules">Module line</button>
-      <button class="btn" data-cam="biw">Body in White</button>
-      <button class="btn" data-cam="paint">Powder coat</button>
-      <button class="btn" data-cam="shipping">Crane</button>
-      <button class="btn" data-cam="lot">Storage lot</button>
-      <button class="btn" data-cam="parking">Parking</button>
-      <button class="btn" data-cam="site">Site</button>
-    </div>
-    <div class="group">
-      <label class="toggle"><input type="checkbox" id="faults" checked /> Random faults</label>
-      <button class="btn" id="panel-toggle">Stations</button>
-    </div>
-  </nav>
-
-  <div id="toasts"></div>
-  <div id="hint">Drag to orbit · scroll to zoom · click a station for details · Space to pause</div>
-
-  <script type="module" src="./src/main.js"></script>
+    <footer>Illustrative demos. All data is simulated. Company names are used for reference only; these demos are not affiliated with or endorsed by ABB or Tesla.</footer>
+  </main>
 </body>
 </html>

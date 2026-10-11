@@ -1,14 +1,19 @@
-# Megafactory Line Simulator
+# AI Factory
 
-A real-time 3D simulation of a utility-scale battery pack production line, inspired by
-Tesla's Megafactory (Lathrop, CA). Built with [three.js](https://threejs.org) — no build step,
-no external assets; every model is generated procedurally.
+Real-time 3D digital twins of manufacturing plants, built with [three.js](https://threejs.org).
+There is no build step and there are no external assets: every model is generated procedurally
+in the browser.
 
-![stations](https://img.shields.io/badge/stations-23-e82127) ![lines](https://img.shields.io/badge/lines-4-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
+| Page | What it is |
+|------|------------|
+| `index.html` | Demo hub |
+| `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
+| `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
+| `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
 
 ## Run it
 
-ES modules need to be served over HTTP (opening `index.html` from disk won't work):
+ES modules need to be served over HTTP (opening the files from disk won't work):
 
 ```bash
 python3 -m http.server 8000
@@ -16,6 +21,103 @@ python3 -m http.server 8000
 ```
 
 Then open <http://localhost:8000>.
+
+---
+
+# Electric Motor Plant (AI digital twin)
+
+![motor plant](assets/motors.jpg)
+
+A live 3D twin of an industrial electric-motor plant, modelled on ABB's Baldor-Reliance motor
+manufacturing (Fort Smith, AR). The layout follows a reference floor plan with three bands:
+
+- **North:** office & QC lab, bracket machining, maintenance shop, press shop, **East Lines 1–3**,
+  sub-assembly & kitting, raw material and the **General Warehouse**.
+- **Middle:** the transformer yard, **Secondary Processes** (stator winding & VPI, orange dashed
+  boundary) and the **Assembly Process** area (two final-assembly lines, blue dashed boundary).
+- **South:** receiving dock, tool crib, **finished-goods staging** with three shipping docks,
+  restrooms, lockers, kitchen and first aid, **Warehouse 2 & Rewinding**, and FG racking.
+
+Zone areas on the yellow plan labels are computed from the model. **Plan colours** turns on the
+plan legend: rack/storage green, workstation/machine blue, raw material orange, finished goods
+yellow, fire extinguishers red.
+
+### Process
+
+```
+Press shop ──► stator cores ─► Stator winding & VPI (U-line) ──► wound stators ─┐
+   (laminations) └► rotor cores ─► East Line 1 · Rotors ◄── shafts ◄── East Line 2   │
+East Line 3 · Frames ──► frames ─────────────────────────────────────────────────────┤
+Bracket machining ──► end brackets ──────────────────────────────────────────────────┤
+                                                                                      ▼
+   Line A (NEMA) / Line B (IEC): stator shrink-fit → rotor → bearings & brackets → fan & cover →
+   conduit box → run test → paint → vision QC (AI) → nameplate & pack
+                                                                                      │
+   line-end pallets ─► forklift ─► FG racking ─► tugger train ─► staging ─► forklift ─► trucks
+```
+
+- **9 lines, 48 stations** (including the rewind service shop) with purpose-built animated machines. Examples: a straight-side
+  stamping press with flywheel and ram, rotor die-casting with a molten-aluminium furnace, CNC
+  lathes and machining centres with sliding doors and coolant mist, twin-flyer coil winders, a
+  VPI tank with a hoist and lifting lid, cure ovens, an induction shrink-fit heater, a dynamometer
+  run-test stand, a paint booth with a robot, a vision arch and a laser marker.
+- **The product is built visibly.** A primer-grey finned frame receives copper windings, a shaft,
+  end brackets, a fan and cover, and a conduit box. It is painted (NEMA blue or IEC grey),
+  nameplated and boxed, then stacked on pallets.
+- **Feeder lines** fill stock racks (each item on the racks is one part in stock). Assembly
+  stations consume that stock, so a feeder that stops starves assembly.
+- **Logistics:** line-end pallets go by forklift to FG racking or directly onto a 5-cart tugger
+  train. The train runs the main aisle to staging, where forklifts fill the drive-in lanes and
+  load trucks that back into the dock doors. There are also AGVs, a receiving forklift and reach
+  trucks.
+- **People:** operators at every station, walkers who head to the kitchen and restrooms at break
+  times, office staff, and maintenance technicians who walk out to the machines.
+
+### AI layer
+
+- **Predictive maintenance.** Each machine has a health model with simulated vibration
+  (mm/s RMS), temperature and power signals. Random anomalies (bearing wear, hydraulic leaks,
+  heater drift…) speed up wear. The AI raises an alert with the failure mode, remaining useful
+  life and confidence. You can schedule the work order, and a technician walks to the machine
+  for a short planned stop. If you don't, the machine breaks down and needs a longer repair.
+  **AI autopilot** schedules work orders automatically when a machine is idle or its predicted
+  failure is close. The plant tracks failures avoided and downtime saved.
+- **Vision QC.** A live camera feed from the inspection arch, rendered in the corner, shows
+  detection boxes projected from the real part geometry (housing, conduit box, fan cover,
+  bracket, shaft) and a PASS/REJECT verdict. Defects (missing bracket bolt, fan-cover dent,
+  missing conduit gasket, paint run…) are visible on the 3D motor. Their rate rises as the
+  upstream machine wears, so a quality problem traces back to a maintenance problem.
+- **Heatmaps.** Floor overlays for utilisation, power draw, blocking and failure risk.
+- **Recommendations.** Bottlenecks, quality root cause, and energy idle-waste suggestions.
+- **Copilot.** Ask "why is output below plan?", "what will fail next?" and similar. Built-in
+  answers are computed from live plant data and come with action buttons (schedule, show
+  heatmap, enable autopilot). Optionally, paste your own Anthropic API key under
+  *Connect Claude* and Claude (`claude-opus-5-5`, via the official `@anthropic-ai/sdk`) answers
+  open-ended questions from a JSON snapshot of the plant. Server-side refusal fallbacks are
+  enabled. The key stays in your browser's localStorage and is sent only to api.anthropic.com.
+
+**Time scale:** 1 simulated second = 20 factory seconds. The plan is 50 motors/hour across both
+lines; the run-test stations are the constraint.
+
+**Controls:** drag/scroll to orbit and zoom. Click a station for its card, which shows live
+condition monitoring, a health/vibration trend, its prediction, *Schedule maintenance* and
+*Inject fault*. Space pauses. Speeds run from ½× to 8×. Camera presets: Overview, Plan
+(top-down, like the drawing), Assembly, Stator & VPI, East lines, Press, Logistics, Rewinding,
+Shipping, Follow motor and a looping **Tour**. `window.motorPlant` exposes the model in the
+console (`motorPlant.snapshot()`, `motorPlant.advance(seconds)`, `motorPlant.jump('assembly')`).
+
+All figures are illustrative and simulated. This demo is not affiliated with or endorsed by ABB.
+
+---
+
+# Megafactory Line Simulator
+
+![megafactory](assets/megafactory.jpg)
+
+A real-time 3D simulation of a utility-scale battery pack production line, inspired by
+Tesla's Megafactory (Lathrop, CA). Open `megafactory.html`.
+
+![stations](https://img.shields.io/badge/stations-23-e82127) ![lines](https://img.shields.io/badge/lines-4-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
 
 ## What's simulated
 
@@ -179,8 +281,14 @@ a `path`, either looping or back and forth with `"pingpong": true`.
 ## Project layout
 
 ```
-index.html       Megafactory simulation page
+index.html       demo hub
+motors.html      Electric Motor Plant (AI digital twin)
+megafactory.html Megafactory simulation page
 builder.html     Line Builder page (generic objects + layout editor)
+assets/          hub preview images
+src/motors/      motor plant: main.js (lines, logistics, people, UI), models.js (motors, machines,
+                 people, vehicles), plant.js (building, rooms, labels, walk graph), ai.js
+                 (predictive maintenance, vision QC, heatmaps, copilot), fx.js, motors.css
 layouts/         example layouts for the Line Builder
 src/builder/     Line Builder object library, flow engine and editor
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
