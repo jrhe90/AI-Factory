@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Line Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="./src/builder/builder.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="loading">Loading layout…</div>
+
+  <header class="panel" id="topbar">
+    <div class="title">
+      <div class="mark"></div>
+      <div><h1>Line Builder</h1><p id="layout-name">Layout</p></div>
+    </div>
+    <div class="group">
+      <button class="btn primary" id="btn-play">❚❚ Pause</button>
+      <button class="btn" id="btn-reset" title="Clear items and restart the clock">Reset</button>
+      <span class="sep"></span>
+      <button class="btn" data-speed="1">1×</button>
+      <button class="btn active" data-speed="5">5×</button>
+      <button class="btn" data-speed="20">20×</button>
+      <button class="btn" data-speed="60">60×</button>
+    </div>
+    <div class="group">
+      <button class="btn" id="btn-3d">3D</button>
+      <button class="btn" id="btn-top">Top</button>
+      <button class="btn active" id="btn-labels">Labels</button>
+    </div>
+    <div class="group">
+      <button class="btn accent" id="btn-edit">Edit layout</button>
+      <button class="btn" id="btn-import">Import</button>
+      <button class="btn" id="btn-export">Export</button>
+      <button class="btn" id="btn-example">Example</button>
+    </div>
+  </header>
+
+  <aside class="panel" id="library">
+    <h2>Library</h2>
+    <div id="palette"></div>
+  </aside>
+
+  <aside class="panel" id="side">
+    <div class="kpis">
+      <div class="kpi"><label>Sim time</label><b id="k-time">0:00:00</b></div>
+      <div class="kpi"><label>Output</label><b id="k-out">0</b></div>
+      <div class="kpi"><label>Per hour</label><b id="k-rate">—</b></div>
+      <div class="kpi"><label>In process</label><b id="k-wip">0</b></div>
+      <div class="kpi wide"><label>Busiest station</label><b id="k-bneck">—</b></div>
+    </div>
+    <div class="legend">
+      <span><i class="dot" data-s="busy"></i>Working</span>
+      <span><i class="dot" data-s="blocked"></i>Blocked</span>
+      <span><i class="dot" data-s="idle"></i>Starved</span>
+      <span><i class="dot" data-s="down"></i>Down</span>
+    </div>
+    <div id="station-list"></div>
+  </aside>
+
+  <section class="panel" id="props" hidden></section>
+
+  <div id="modal" hidden>
+    <div class="panel sheet">
+      <div class="props-head"><h3 id="modal-title">Layout JSON</h3><button id="modal-close" aria-label="Close">×</button></div>
+      <textarea id="modal-text" spellcheck="false"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="modal-copy">Copy</button>
+        <button class="btn primary" id="modal-apply" hidden>Load layout</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <script type="module" src="./src/builder/app.js"></script>
+</body>
+</html>

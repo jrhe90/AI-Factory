@@ -130,6 +130,39 @@ plant bottleneck, giving a takt of about 68 minutes per pack, the figure quoted 
 video. At ~3.9 MWh per pack that is roughly a 30 GWh/year run-rate before downtime. The feeder lines run a little faster, so they fill
 their buffers and then wait.
 
+## Line Builder (generic objects, FlexSim-style)
+
+`builder.html` is a separate page for presenting any line without 3D modelling. It has a library of
+generic objects: Source, Queue, Station, Conveyor, Sink, Operator, Robot, Rack, Cart, AGV, Forklift,
+Table, Pallet, Tank, Fence and Zone. You place them from a JSON layout, connect them, and items
+flow through:
+
+- Stations have three styles (`bench`, `machine` for enclosed test rigs and ovens, `cell` for a
+  robot behind a fence), animated operators, and a light tower: green working, amber blocked,
+  red down.
+- The side panel shows output, throughput, the busiest station, and each station's
+  working / blocked / starved split.
+- **Edit layout** opens the library and the property panel. Click an object to select it, then:
+  drag to move, **R** rotate, **C** connect to the next object, **D** duplicate, **Delete** remove.
+  Use Export / Import to copy a layout as JSON. Edits are kept in your browser.
+
+A layout is a list of objects (see `layouts/pack-line.json`):
+
+```json
+{ "name": "My line", "item": { "size": [1.4, 0.55, 0.7], "color": "#eef0f2" },
+  "objects": [
+    { "id": "SRC", "type": "source", "x": -20, "z": 0, "interarrival": 60, "next": ["ST10"] },
+    { "id": "ST10", "type": "processor", "label": "Assembly", "x": -14, "z": 0, "time": 55, "operators": 2, "next": ["C1"] },
+    { "id": "C1", "type": "conveyor", "from": [-12.4, 0], "to": [-7.6, 0], "speed": 1, "next": ["SNK"] },
+    { "id": "SNK", "type": "sink", "x": -5, "z": 0 },
+    { "id": "AGV1", "type": "agv", "path": [[-20, -4], [0, -4], [0, -8], [-20, -8]] }
+  ] }
+```
+
+Positions are in metres. `rot` is in degrees; flow runs along the object's local x axis, and
+`rot: 90` points it toward +z. Times are simulated seconds. Movers (AGV, forklift, operator) follow
+a `path`, either looping or back and forth with `"pingpong": true`.
+
 ## Controls
 
 - **Drag / scroll** — orbit and zoom
@@ -146,7 +179,10 @@ their buffers and then wait.
 ## Project layout
 
 ```
-index.html       HUD markup + import map (three.js from jsDelivr)
+index.html       Megafactory simulation page
+builder.html     Line Builder page (generic objects + layout editor)
+layouts/         example layouts for the Line Builder
+src/builder/     Line Builder object library, flow engine and editor
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
 src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
 src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping

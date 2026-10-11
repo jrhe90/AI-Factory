@@ -1,0 +1,48 @@
+{
+  "name": "Megapack pack line (generic)",
+  "floor": { "w": 96, "d": 52 },
+  "item": { "size": [1.4, 0.55, 0.7], "color": "#eef0f2" },
+  "objects": [
+    { "id": "Z1", "type": "zone", "label": "Pack assembly", "x": -11, "z": 0, "w": 58, "d": 7, "color": "#2f6fd6" },
+    { "id": "Z2", "type": "zone", "label": "Test, QA & shipping", "x": -3, "z": 10, "w": 42, "d": 7, "color": "#2e9e5b" },
+    { "id": "Z3", "type": "zone", "label": "Module storage", "x": -6, "z": -7, "w": 24, "d": 6, "color": "#f08a24" },
+
+    { "id": "SRC", "type": "source", "label": "Frames in", "x": -39, "z": 0, "interarrival": 66, "next": ["QIN"] },
+    { "id": "QIN", "type": "queue", "label": "Frame buffer", "x": -33, "z": 0, "capacity": 4, "next": ["ST10"] },
+
+    { "id": "ST10", "type": "processor", "label": "Chassis Load", "x": -26, "z": 0, "time": 50, "operators": 1, "next": ["C1"] },
+    { "id": "C1", "type": "conveyor", "from": [-24.4, 0], "to": [-19.6, 0], "speed": 1, "next": ["ST20"] },
+    { "id": "ST20", "type": "processor", "label": "HV Busbar & Harness", "x": -18, "z": 0, "time": 55, "operators": 2, "next": ["C2"] },
+    { "id": "C2", "type": "conveyor", "from": [-16.4, 0], "to": [-11.6, 0], "speed": 1, "next": ["ST30"] },
+    { "id": "ST30", "type": "processor", "label": "Module Install", "x": -10, "z": 0, "time": 62, "style": "cell", "next": ["C3"] },
+    { "id": "C3", "type": "conveyor", "from": [-8.4, 0], "to": [-3.6, 0], "speed": 1, "next": ["ST40"] },
+    { "id": "ST40", "type": "processor", "label": "Thermal & Inverter", "x": -2, "z": 0, "time": 58, "operators": 2, "next": ["C4"] },
+    { "id": "C4", "type": "conveyor", "from": [-0.4, 0], "to": [4.4, 0], "speed": 1, "next": ["ST50"] },
+    { "id": "ST50", "type": "processor", "label": "Enclosure & Doors", "x": 6, "z": 0, "time": 60, "operators": 2, "failRate": 0.4, "next": ["C5"] },
+    { "id": "C5", "type": "conveyor", "from": [7.6, 0], "to": [12.4, 0], "speed": 1, "next": ["C6"] },
+    { "id": "C6", "type": "conveyor", "from": [13.6, 0], "to": [13.6, 10], "speed": 1, "next": ["ST60"] },
+
+    { "id": "ST60", "type": "processor", "label": "Coolant Fill", "x": 10, "z": 10, "rot": 180, "time": 48, "operators": 1, "next": ["C7"] },
+    { "id": "C7", "type": "conveyor", "from": [8.4, 10], "to": [3.6, 10], "speed": 1, "next": ["ST70"] },
+    { "id": "ST70", "type": "processor", "label": "End-of-Line Test", "x": 2, "z": 10, "rot": 180, "time": 70, "style": "machine", "operators": 1, "failRate": 0.3, "next": ["C8"] },
+    { "id": "C8", "type": "conveyor", "from": [0.4, 10], "to": [-4.4, 10], "speed": 1, "next": ["ST80"] },
+    { "id": "ST80", "type": "processor", "label": "Final QA", "x": -6, "z": 10, "rot": 180, "time": 40, "operators": 1, "next": ["C9"] },
+    { "id": "C9", "type": "conveyor", "from": [-7.6, 10], "to": [-12.4, 10], "speed": 1, "next": ["QOUT"] },
+    { "id": "QOUT", "type": "queue", "label": "Outbound", "x": -15.5, "z": 10, "capacity": 6, "next": ["SNK"] },
+    { "id": "SNK", "type": "sink", "label": "Shipping", "x": -21, "z": 10 },
+
+    { "id": "RK1", "type": "rack", "label": "Module racks A", "x": -11, "z": -7.5, "bays": 3, "levels": 4, "seed": 2 },
+    { "id": "RK2", "type": "rack", "label": "Module racks B", "x": -2, "z": -7.5, "bays": 3, "levels": 4, "seed": 5 },
+    { "id": "AGV1", "type": "agv", "label": "AGV 1", "path": [[-17, -4.2], [3, -4.2], [3, -10.5], [-17, -10.5]], "speed": 1.6 },
+    { "id": "CART1", "type": "cart", "label": "Kit cart", "x": -13, "z": -2.8, "rot": 0 },
+    { "id": "CART2", "type": "cart", "label": "Tool cart", "x": 4, "z": -2.8, "rot": 0 },
+    { "id": "FL1", "type": "forklift", "label": "Forklift", "path": [[-36, 5], [16, 5]], "pingpong": true, "speed": 2.2 },
+    { "id": "OP1", "type": "operator", "label": "Team lead", "path": [[-28, 3.6], [8, 3.6]], "pingpong": true, "speed": 1.1 },
+    { "id": "P1", "type": "pallet", "x": -39, "z": -4, "layers": 2 },
+    { "id": "P2", "type": "pallet", "x": -37, "z": -4, "layers": 3 },
+    { "id": "P3", "type": "pallet", "x": -39, "z": 4, "layers": 1 },
+    { "id": "TK1", "type": "tank", "label": "Glycol tank", "x": 10, "z": 14.5, "color": "#2a6fd8" },
+    { "id": "T1", "type": "table", "label": "Rework bench", "x": 2, "z": 14.5 },
+    { "id": "F1", "type": "fence", "x": 16.5, "z": 5, "rot": 90, "length": 14 }
+  ]
+}
