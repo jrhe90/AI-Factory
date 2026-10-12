@@ -1,3 +1,9 @@
 {
-  "models": []
+  "models": [
+    {
+      "slug": "megapack-2xl",
+      "name": "Megapack 2 XL",
+      "role": "equipment"
+    }
+  ]
 }

@@ -1,0 +1,15 @@
+{
+  "slug": "megapack-2xl",
+  "name": "Megapack 2 XL",
+  "role": "equipment",
+  "factory": "createMegapack2XLModel",
+  "size": [
+    8.84,
+    2.83,
+    1.69
+  ],
+  "rotationY": 0,
+  "source": "img2threejs v2.0.0 reconstruction of captures/megapack-2xl (3 photos of a desk-scale Megapack 2 XL model)",
+  "approximate": true,
+  "registeredAt": "2026-10-12T00:30:26.852Z"
+}
