@@ -10,6 +10,7 @@ in the browser.
 | `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
 | `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
 | `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
+| `factory-builder/` | **Sim Factory Builder**: import your own layout (image, PDF or DXF), build the twin from a reusable library, draw AGV routes, staff stations and simulate (React + Vite, see [its README](factory-builder/README.md); a prebuilt copy is at `factory-builder/dist/`) |
 
 ## Run it
 
