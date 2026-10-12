@@ -26,6 +26,9 @@ const P = {
   cube: 'M12 2l9 5v10l-9 5-9-5V7z M12 12l9-5M12 12v10M12 12L3 7',
   map: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z M9 3v15M15 6v15',
   sample: 'M4 20V9l8-5 8 5v11 M9 20v-6h6v6',
+  build: 'M3 21h18 M5 21V11l4-3v3l4-3v3l4-3v13 M17 21V4h3v17',
+  chart: 'M4 20V4 M4 20h16 M8 16v-5 M12 16V8 M16 16v-3',
+  close: 'M6 6l12 12M18 6L6 18',
 };
 
 export function Icon({ name, size = 18 }) {

@@ -28,17 +28,32 @@ empty factory; **Sample** reloads the reference.
 2. **Sketch the building.** Walls (W), zones (Z), aisles (A). Zone types include production,
    assembly, secondary processes, warehouse, storage, dock, office, welfare and **break area**,
    and every zone shows its area in m².
-3. **Place equipment** from the library. Drag a card onto the floor, or click it and then click
+3. **Auto-build** (optional). Fills every zone from a template for its kind and wires the
+   result into one flow, so you get a working mid-size plant from a sketch in one click:
+   - *Warehouse* and *dock* zones get receiving doors and an ASRS or raw-material racks.
+   - *Production*, *secondary* and *assembly* zones get parallel lines along their long side
+     (machining, stator and motor assembly), with line-side buffers and conveyors.
+   - *Storage* zones get finished-goods racks and a shipping door on the outside wall.
+   - Manual stations are staffed, break areas get tables, and an AGV loop with a main aisle,
+     cross aisles and a spur to every pick-up point is laid out, with AGVs and forklifts.
+
+   Auto-build is rule-based, not AI. Everything it creates is ordinary objects, links and
+   routes that you can edit.
+4. **Place equipment** from the library. Drag a card onto the floor, or click it and then click
    the floor. Objects snap to the grid (Alt bypasses snapping). Overlapping footprints turn red.
-4. **Connect the flow** (C): click an upstream object, then a downstream one. Links can be a
+5. **Connect the flow** (C): click an upstream object, then a downstream one. Links can be a
    **conveyor** (with accumulation), a **manual hand-off** or **vehicle transport**.
-5. **Draw AGV routes** (P). All routes form one network; crossing routes are joined. Vehicles
+6. **Draw AGV routes** (P). All routes form one network; crossing routes are joined. Vehicles
    serve transport links along the shortest path.
-6. **Staff it.** Set *Operators needed* per station. Either place real operators (*Add operator
+7. **Staff it.** Set *Operators needed* per station. Either place real operators (*Add operator
    here*) or leave a virtual crew. Crews stop for the shift breaks and walk to the nearest
    break area.
-7. **Simulate.** Throughput, WIP, lead time, bottleneck, per-station working / blocked /
+8. **Simulate.** Throughput, WIP, lead time, bottleneck, per-station working / blocked /
    starved / down split and vehicle utilisation, with light towers and status discs in 3D.
+   Speeds go up to 1200× so you can run a whole shift in under a minute.
+9. **Dashboard.** Opens live KPIs over the 3D view: units shipped, rolling hourly throughput,
+   WIP, lead time, station and fleet utilisation, breakdowns, trends over the run, station
+   states over time, each station's time split with the bottleneck flagged, and an event log.
 
 Use the **Plant** tab for the tree of zones → lines → stations, storage, vehicles, operators and
 routes. Use **Save** / **Open** for the `.json` project file. The project also autosaves in the

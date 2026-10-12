@@ -3,6 +3,7 @@ import { useStore } from '../store.js';
 import { getViewport } from '../engine/Viewport.js';
 import { emptyProject } from '../model/project.js';
 import { referenceProject } from '../samples/reference.js';
+import { autoBuild } from '../model/autobuild.js';
 import { Icon } from './icons.jsx';
 
 function download(name, text) {
@@ -21,6 +22,7 @@ export default function TopBar() {
   const view = useStore((s) => s.view);
   const sim = useStore((s) => s.sim);
   const showLabels = useStore((s) => s.showLabels);
+  const dashboard = useStore((s) => s.dashboard);
   const fileRef = useRef(null);
   const st = useStore.getState;
 
@@ -48,6 +50,30 @@ export default function TopBar() {
     } });
   };
 
+  // Rule-based: fills each zone from its kind's template, then wires flows and AGV routes
+  const runAutoBuild = () => {
+    if (!st().project.zones.length) {
+      st().toast('Draw zones first (Z) and set each one\'s kind: assembly, production, warehouse, storage, dock…', 'warn');
+      return;
+    }
+    const go = () => {
+      const vp = getViewport();
+      vp?.resetSim();
+      let res = null;
+      st().update((p) => {
+        for (const k of ['objects', 'links', 'routes', 'lines', 'aisles']) p[k] = [];
+        res = autoBuild(p);
+      }, { select: [] });
+      if (!res) return;
+      vp?.reveal(res.order);
+      const c = res.counts;
+      st().toast(`Auto-built ${c.lines} lines, ${c.stations} stations, ${c.storage} storage units, ${c.operators} operators and ${c.vehicles} vehicles`);
+    };
+    if (st().project.objects.length) {
+      st().openDialog({ kind: 'confirm', title: 'Auto-build this layout?', text: 'Equipment, links and AGV routes are replaced with a generated factory. Zones and walls are kept.', ok: 'Auto-build', onOk: go });
+    } else go();
+  };
+
   return (
     <header className="topbar">
       <div className="brand">
@@ -67,6 +93,7 @@ export default function TopBar() {
       </div>
       <div className="tb-group">
         <button className="tb accent" onClick={() => st().openDialog({ kind: 'import' })}><Icon name="import" />Import layout</button>
+        <button className="tb build" onClick={runAutoBuild} title="Fill the zones with lines, storage, docks, staff and AGV routes from templates"><Icon name="build" />Auto-build</button>
       </div>
       <div className="tb-group">
         <button className="tb icon" disabled={!canUndo} onClick={() => st().undo()} title="Undo (Ctrl+Z)"><Icon name="undo" /></button>
@@ -85,9 +112,10 @@ export default function TopBar() {
           ? <button className="tb run" onClick={() => getViewport()?.pauseSim()}><Icon name="pause" />Pause</button>
           : <button className="tb run" onClick={() => { getViewport()?.startSim(); useStore.setState({ rightTab: 'sim' }); }}><Icon name="play" />{sim.built ? 'Resume' : 'Simulate'}</button>}
         <button className="tb icon" disabled={!sim.built} onClick={() => getViewport()?.resetSim()} title="Stop and reset the simulation"><Icon name="reset" /></button>
+        <button className={`tb ${dashboard ? 'on' : ''}`} onClick={() => useStore.setState({ dashboard: !dashboard })} title="Live KPI dashboard"><Icon name="chart" />Dashboard</button>
         <label className="speed" title="Simulation speed">
           <select value={sim.speed} onChange={(e) => useStore.setState({ sim: { ...sim, speed: Number(e.target.value) } })}>
-            {[1, 5, 10, 30, 60, 120].map((v) => <option key={v} value={v}>{v}×</option>)}
+            {[1, 5, 10, 30, 60, 120, 300, 600, 1200].map((v) => <option key={v} value={v}>{v}×</option>)}
           </select>
         </label>
       </div>

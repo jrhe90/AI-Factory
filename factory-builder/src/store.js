@@ -58,6 +58,7 @@ export const useStore = create((set, get) => ({
   cursor: null,
   hint: '',
   sim: { running: false, speed: 10, built: false },
+  dashboard: false,
   simStats: null,
 
   // ---- project editing

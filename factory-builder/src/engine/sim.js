@@ -11,6 +11,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const CONVEYOR_SPEED = 0.5; // m/s
 const ITEM_GAP = 0.8; // m between parts on a conveyor
 const HANDLE_TIME = 4; // s to load or unload a vehicle
+const SAMPLE_EVERY = 300; // s of sim time between dashboard history samples
 
 export class Simulation {
   // geom(id) -> { entry:[x,y,z], exit:[x,y,z], work:[x,y,z] } in world space
@@ -28,6 +29,10 @@ export class Simulation {
     this.vehicles = [];
     this.operators = [];
     this.events = [];
+    this.eventLog = [];
+    this.breakdowns = 0;
+    this.history = [];
+    this.nextSample = 0;
     this.breakZones = project.zones.filter((z) => z.kind === 'break');
 
     for (const o of project.objects) {
@@ -188,6 +193,7 @@ export class Simulation {
           n.reason = '';
           if (p.mtbf > 0 && Math.random() < dt / (p.mtbf * 3600)) {
             n.down = Math.max(60, (p.mttr ?? 15) * 60 * rnd(0.5, 1.5));
+            this.breakdowns++;
             this.log(`⚠ ${n.obj.name} broke down`, 'warn');
           }
         }
@@ -356,10 +362,29 @@ export class Simulation {
   }
 
   log(text, kind = 'info') {
-    this.events.push({ t: this.t, text, kind });
+    const ev = { t: this.t, clock: this.clock(), text, kind };
+    this.events.push(ev);
+    this.eventLog.push(ev);
+    if (this.eventLog.length > 40) this.eventLog.shift();
+  }
+
+  // One dashboard sample: output, rolling hourly rate, WIP, station states, vehicle use
+  sample() {
+    const states = { busy: 0, idle: 0, blocked: 0, down: 0, off: 0 };
+    for (const n of this.nodes.values()) if (n.role === 'station') states[n.state] = (states[n.state] ?? 0) + 1;
+    const h = this.history;
+    const prev = h.length >= 12 ? h[h.length - 12] : h[0];
+    const rate = prev && this.t > prev.t ? (this.finished - prev.finished) / ((this.t - prev.t) / 3600) : 0;
+    const veh = this.vehicles.length ? this.vehicles.filter((v) => v.state !== 'idle').length / this.vehicles.length : 0;
+    h.push({ t: this.t, finished: this.finished, rate, wip: this.items.size, states, veh });
+    if (h.length > 2000) h.splice(0, h.length - 2000);
   }
 
   step(dt) {
+    if (this.t >= this.nextSample) {
+      this.sample();
+      this.nextSample += SAMPLE_EVERY;
+    }
     this.t += dt;
     const brk = this.onBreak();
     this.stepOperators(dt, brk);
@@ -419,6 +444,7 @@ export class Simulation {
       bottleneck: this.t > 120 ? bottleneck : null, stations,
       vehicles: this.vehicles.map((v) => ({ id: v.id, name: v.obj.name, state: v.state, util: this.t ? v.busyTime / this.t : 0, trips: v.trips })),
       waitingTransport: [...this.links.values()].reduce((a, l) => a + l.pickup.filter((i) => !i.assigned).length, 0),
+      breakdowns: this.breakdowns, history: this.history.slice(), log: this.eventLog.slice(-8),
     };
   }
 }

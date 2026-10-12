@@ -5,6 +5,7 @@ import TopBar from './ui/TopBar.jsx';
 import LeftPanel, { ToolRail, ToolOptions } from './ui/LeftPanel.jsx';
 import RightPanel from './ui/RightPanel.jsx';
 import { Dialogs, Toasts, StatusBar } from './ui/Dialogs.jsx';
+import Dashboard from './ui/Dashboard.jsx';
 import { referenceProject } from './samples/reference.js';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
           <ToolOptions />
         </div>
         <RightPanel />
+        <Dashboard />
       </div>
       <StatusBar />
       <Dialogs />

@@ -85,6 +85,7 @@ export class Viewport {
     this.simRunning = false;
     this.blinkT = 0;
     this.statsTimer = 0;
+    this.zoneLabelNear = 38; // m: closer than this, zone labels hide so the equipment shows
 
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }));
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1201,14 +1202,77 @@ export class Viewport {
     if (this.itemMesh.instanceColor) this.itemMesh.instanceColor.needsUpdate = true;
   }
 
+  // ---------------------------------------------------------------- reveal (after auto-build)
+  // Objects drop in group by group (a zone or line at a time); routes, aisles and links
+  // appear once the equipment is in.
+  reveal(order, duration = 4.5) {
+    const groups = [...new Set(order.map(([, g]) => g))];
+    const gap = (duration * 0.65) / Math.max(1, groups.length);
+    const items = [];
+    for (const [gi, g] of groups.entries()) {
+      const ids = order.filter(([, gg]) => gg === g).map(([id]) => id);
+      const step = Math.min(0.07, (duration * 0.3) / Math.max(1, ids.length));
+      ids.forEach((id, i) => items.push({ id, delay: gi * gap + i * step }));
+    }
+    this.revealing = { t: 0, items, end: Math.max(...items.map((i) => i.delay)) + 0.6 };
+    for (const g of [this.linksG, this.routesG, this.aislesG]) g.visible = false;
+    this.stepReveal(0);
+  }
+  stepReveal(dt) {
+    const R = this.revealing;
+    R.t += dt;
+    const back = (k) => 1 + 2.70158 * (k - 1) ** 3 + 1.70158 * (k - 1) ** 2; // ease-out-back
+    for (const it of R.items) {
+      const v = this.views.get(it.id);
+      if (!v) continue;
+      const k = Math.min(1, Math.max(0, (R.t - it.delay) / 0.55));
+      const s = k <= 0 ? 0.001 : Math.max(0.001, back(k));
+      v.root.scale.set(s, s, s);
+      v.root.position.y = (1 - Math.min(1, k * 1.4)) * 5;
+      v.root.visible = k > 0;
+    }
+    if (R.t > R.end * 0.7) {
+      this.routesG.visible = true;
+      this.aislesG.visible = true;
+    }
+    if (R.t >= R.end) {
+      for (const it of R.items) {
+        const v = this.views.get(it.id);
+        if (!v) continue;
+        v.root.scale.set(1, 1, 1);
+        v.root.position.y = 0;
+        v.root.visible = true;
+      }
+      for (const g of [this.linksG, this.routesG, this.aislesG]) g.visible = true;
+      this.revealing = null;
+    }
+  }
+
+  // ---------------------------------------------------------------- frame loop
+  // capture(true) stops the real-time loop so a recorder can step frames with tick(dt)
+  capture(on = true) {
+    cancelAnimationFrame(this.raf);
+    this.capturing = on;
+    if (!on) {
+      this.clock.getDelta();
+      this.raf = requestAnimationFrame(this.loop);
+    }
+  }
+  tick(dt) { this.frame(dt); }
+
   loop() {
     this.raf = requestAnimationFrame(this.loop);
-    const dt = Math.min(this.clock.getDelta(), 0.1);
+    this.frame(Math.min(this.clock.getDelta(), 0.1));
+  }
+
+  frame(dt) {
     this.blinkT += dt;
+    if (this.revealing) this.stepReveal(dt);
     let simDt = 0;
     if (this.sim && this.simRunning) {
       simDt = dt * this.state.sim.speed;
-      const steps = Math.ceil(simDt / 0.25);
+      // 0.25 s steps, coarser at very high speeds so a frame stays cheap
+      const steps = Math.ceil(simDt / Math.max(0.25, simDt / 240));
       for (let k = 0; k < steps; k++) this.sim.step(simDt / steps);
       for (const ev of this.sim.events.splice(0)) this.state.toast(ev.text, ev.kind);
     }
@@ -1225,7 +1289,7 @@ export class Viewport {
     }
     // Zone labels are large: hide them when the camera is close enough to read the equipment
     if (this.state.showLabels && this.camera === this.persp) {
-      for (const c of this.zonesG.children) if (c.userData.zoneLabel) c.visible = this.persp.position.distanceTo(c.position) > 38;
+      for (const c of this.zonesG.children) if (c.userData.zoneLabel) c.visible = this.persp.position.distanceTo(c.position) > this.zoneLabelNear;
     }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
