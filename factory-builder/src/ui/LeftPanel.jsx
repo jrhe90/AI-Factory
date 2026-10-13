@@ -21,7 +21,7 @@ export function ToolRail() {
   return (
     <nav className="rail" aria-label="Tools">
       {TOOLS.map(([t, label, key]) => (
-        <button key={t} className={tool === t ? 'on' : ''} onClick={() => setTool(t)} title={`${label} (${key})`} aria-label={label}>
+        <button key={t} data-guide={`tool-${t}`} className={tool === t ? 'on' : ''} onClick={() => setTool(t)} title={`${label} (${key})`} aria-label={label}>
           <Icon name={t} size={20} />
           <small>{key}</small>
         </button>
@@ -39,7 +39,7 @@ export function ToolOptions() {
   let opts = null;
   if (tool === 'zone') {
     opts = (
-      <label>Zone type
+      <label data-guide="zone-kind">Zone type
         <select value={zoneKind} onChange={(e) => useStore.setState({ zoneKind: e.target.value })}>
           {Object.entries(ZONE_KINDS).map(([k, z]) => <option key={k} value={k}>{z.label}</option>)}
         </select>

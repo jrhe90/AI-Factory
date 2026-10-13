@@ -261,3 +261,44 @@ h4.first { margin-top: 4px; }
 @media (max-width: 1100px) { .db-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } .db-grid3, .db-grid2 { grid-template-columns: 1fr; } }
 /* the dashboard has its own event log, so toasts would only cover it */
 .app:has(.dashboard) .toasts { display: none; }
+
+/* ---------------------------------------------------------------- setup guide */
+.guide { position: fixed; left: 58px; top: 52px; bottom: 28px; z-index: 21; width: 264px; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 12px; background: var(--panel); border-right: 1px solid var(--line); box-shadow: 8px 0 24px rgba(0, 0, 0, 0.25); }
+.guide h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; text-transform: none; color: #fff; }
+.g-head { display: flex; align-items: center; justify-content: space-between; margin: -4px -6px -2px 0; }
+.g-count { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-2); }
+.g-tools { display: flex; gap: 2px; }
+.g-tools .tb { height: 26px; padding: 0 5px; color: var(--muted); }
+.g-progress { display: flex; gap: 4px; }
+.g-progress i { flex: 1; height: 4px; border-radius: 4px; background: #2a3442; }
+.g-progress i.past { background: var(--accent); }
+.g-progress i.now { background: linear-gradient(90deg, var(--accent), var(--cyan)); }
+.g-body { flex: 1; min-height: 0; overflow: auto; font-size: 13px; line-height: 1.5; color: #d3dae3; }
+.g-body p { margin: 0 0 8px; }
+.g-body ol, .g-body ul { margin: 0 0 8px; padding-left: 20px; }
+.g-body li { margin: 2px 0; }
+.g-body b { color: #fff; }
+.g-note { color: var(--muted); font-size: 12px; }
+.g-note b { color: #c9d2dc; }
+.g-key { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 5px; border: 1px solid #3b475a; border-bottom-width: 2px; background: #1f2732; font: 600 11px/18px var(--mono); text-align: center; color: #fff; }
+.g-zones, .g-legend { list-style: none; padding: 0 !important; display: grid; gap: 3px; }
+.g-zones li, .g-legend li { display: flex; align-items: center; gap: 7px; font-size: 12px; min-width: 0; }
+.g-zones span { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-zones i, .g-legend i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.g-status { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 9px; background: #1d2530; color: var(--muted); font-size: 12.5px; }
+.g-status.ok { background: rgba(34, 197, 94, 0.14); color: #86efac; }
+.g-foot { display: flex; flex-direction: column; gap: 8px; }
+.g-foot > div { display: flex; justify-content: space-between; gap: 8px; }
+.g-do { width: 100%; justify-content: center; }
+.g-foot .btn { display: inline-flex; align-items: center; gap: 6px; }
+.g-spot { position: fixed; z-index: 25; pointer-events: none; border-radius: 11px; border: 2px solid #a28bff; box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.25), 0 0 24px rgba(124, 92, 255, 0.55); animation: g-pulse 1.4s ease-in-out infinite; }
+@keyframes g-pulse { 50% { box-shadow: 0 0 0 9px rgba(124, 92, 255, 0.08), 0 0 30px rgba(124, 92, 255, 0.35); } }
+@media (prefers-reduced-motion: reduce) { .g-spot { animation: none; } }
+.g-pill { position: fixed; left: 70px; bottom: 40px; z-index: 21; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 99px; border: 1px solid #34405a; background: rgba(21, 27, 35, 0.97); color: #fff; font-weight: 600; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45); }
+.btn.sample-plan { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 10px; padding: 8px 10px; text-align: left; }
+.btn.sample-plan img { width: 84px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.btn.sample-plan span { display: flex; flex-direction: column; gap: 2px; }
+.btn.sample-plan small { color: var(--muted); font-weight: 400; }
+@media (max-width: 900px) { .guide { left: 0; width: min(320px, 100vw); } .g-pill { left: 16px; } }
+.g-right { display: flex; gap: 8px; }
+@media (max-width: 1640px) { .topbar .lbl { display: none; } .tb-group { padding: 0 5px; } .brand { min-width: 0; } .pname { width: 120px; } }

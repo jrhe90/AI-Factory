@@ -4,6 +4,7 @@ import { emptyProject, normalizeProject, newId, findEntity } from './model/proje
 import { CATALOG_BY_TYPE } from './library/catalog.js';
 
 const STORAGE_KEY = 'sim-factory-project-v1';
+const GUIDE_KEY = 'sim-factory-guide-v1';
 const HISTORY_LIMIT = 80;
 
 // Deep copy that shares the (large, immutable) floor image between history states
@@ -20,6 +21,15 @@ function loadSaved() {
     if (raw) return normalizeProject(JSON.parse(raw));
   } catch { /* storage unavailable or corrupt */ }
   return null;
+}
+
+// The setup guide remembers whether it is open and which step you are on
+function loadGuide() {
+  try {
+    const g = JSON.parse(localStorage.getItem(GUIDE_KEY));
+    if (g && typeof g.step === 'number') return { open: !!g.open, step: g.step, min: !!g.min, seen: true };
+  } catch { /* storage unavailable */ }
+  return { open: false, step: 0, min: false, seen: false };
 }
 
 let saveTimer = null;
@@ -59,6 +69,7 @@ export const useStore = create((set, get) => ({
   hint: '',
   sim: { running: false, speed: 10, built: false },
   dashboard: false,
+  guide: loadGuide(),
   simStats: null,
 
   // ---- project editing
@@ -159,6 +170,11 @@ export const useStore = create((set, get) => ({
     const id = Math.random().toString(36).slice(2);
     set((s) => ({ toasts: [...s.toasts.slice(-3), { id, text, kind }] }));
     setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 4500);
+  },
+  setGuide(patch) {
+    const guide = { ...get().guide, ...patch, seen: true };
+    set({ guide });
+    try { localStorage.setItem(GUIDE_KEY, JSON.stringify(guide)); } catch { /* storage unavailable */ }
   },
   openDialog(dialog) { set({ dialog }); },
   closeDialog() { set({ dialog: null }); },

@@ -29,6 +29,11 @@ const P = {
   build: 'M3 21h18 M5 21V11l4-3v3l4-3v3l4-3v13 M17 21V4h3v17',
   chart: 'M4 20V4 M4 20h16 M8 16v-5 M12 16V8 M16 16v-3',
   close: 'M6 6l12 12M18 6L6 18',
+  help: 'M12 21a9 9 0 1 0 0-18a9 9 0 1 0 0 18z M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6 M12 17h0',
+  check: 'M5 12.5l4.5 4.5L19 7',
+  minus: 'M5 12h14',
+  arrow: 'M5 12h14M13 6l6 6-6 6',
+  back: 'M19 12H5M11 6l-6 6 6 6',
 };
 
 export function Icon({ name, size = 18 }) {

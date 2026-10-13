@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useStore } from '../store.js';
 import { getViewport } from '../engine/Viewport.js';
 import { importFloorFile } from '../importers/index.js';
+import { applyFloor, loadSampleFloor } from '../actions.js';
 import { Icon } from './icons.jsx';
 
 function ImportDialog({ close }) {
@@ -15,18 +16,8 @@ function ImportDialog({ close }) {
     setError('');
     try {
       const { source, mpp } = await importFloorFile(file);
-      useStore.getState().update((p) => {
-        p.floor = { ...p.floor, source, mpp, center: [0, 0], rotation: 0, visible: true };
-      });
       close();
-      setTimeout(() => getViewport()?.fit(), 50);
-      const st = useStore.getState();
-      st.toast(source.kind === 'dxf'
-        ? `Imported ${source.layers.length} CAD layers. Check the scale, then turn layers into walls in Properties.`
-        : 'Plan imported. Now set the scale: click two points whose real distance you know.');
-      st.select([]);
-      useStore.setState({ rightTab: 'props' });
-      if (source.kind !== 'dxf') st.setTool('calibrate');
+      applyFloor(source, mpp);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -49,6 +40,10 @@ function ImportDialog({ close }) {
         <span>PNG, JPG or WebP drawings · PDF (first page) · DXF from AutoCAD</span>
         <input ref={inputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.dxf,.dwg,image/*,application/pdf" onChange={(e) => handle(e.target.files?.[0])} />
       </div>
+      <button className="btn sample-plan" data-guide="sample-plan" onClick={() => { close(); loadSampleFloor(); }}>
+        <img src={`${import.meta.env.BASE_URL}samples/reference-plan.webp`} alt="" />
+        <span><b>Use the sample floor plan</b><small>Electric motor plant, 160 m × 85 m. Good for a first try.</small></span>
+      </button>
       {error && <div className="warn">{error}</div>}
       <ul className="tips">
         <li><b>Images and PDFs</b> become a see-through floor. Use <i>Calibrate scale</i> on a known dimension, such as a column grid or door width.</li>
@@ -72,6 +67,7 @@ function CalibrateDialog({ d, close }) {
     useStore.getState().update((p) => {
       const f = p.floor;
       f.mpp *= k;
+      f.calibrated = true;
       f.center = [d.a[0] + (f.center[0] - d.a[0]) * k, d.a[1] + (f.center[1] - d.a[1]) * k];
     });
     getViewport()?.cancelDraft();

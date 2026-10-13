@@ -6,6 +6,7 @@ import LeftPanel, { ToolRail, ToolOptions } from './ui/LeftPanel.jsx';
 import RightPanel from './ui/RightPanel.jsx';
 import { Dialogs, Toasts, StatusBar } from './ui/Dialogs.jsx';
 import Dashboard from './ui/Dashboard.jsx';
+import Guide from './ui/Guide.jsx';
 import { referenceProject } from './samples/reference.js';
 
 export default function App() {
@@ -15,6 +16,8 @@ export default function App() {
     const st = useStore.getState();
     const fresh = !st.project.objects.length && !st.project.floor.source && !st.project.zones.length;
     if (fresh) st.setProject(referenceProject());
+    // First visit: open the setup guide
+    if (!st.guide.seen) st.setGuide({ open: true, step: 0 });
     const vp = new Viewport(host.current, useStore);
     vp.fit();
     window.simFactory = { vp, store: useStore };
@@ -35,6 +38,7 @@ export default function App() {
       <StatusBar />
       <Dialogs />
       <Toasts />
+      <Guide />
     </div>
   );
 }

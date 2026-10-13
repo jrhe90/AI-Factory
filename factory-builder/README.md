@@ -13,7 +13,22 @@ npm run dev        # http://localhost:5173
 npm run build      # static site in dist/ (open with `npm run preview`)
 ```
 
-On first launch it opens a **reference plant**: the sample floor plan rebuilt with walls,
+On first launch the **setup guide** opens beside a finished **reference plant**. The guide walks
+you through the whole workflow with a sample floor plan, in eight steps:
+
+1. Start a new factory
+2. Import the sample floor plan
+3. Set its scale
+4. Sketch the zones
+5. Auto-build
+6. Review and edit
+7. Simulate a shift
+8. Read the dashboard
+
+Each step highlights the control to use, ticks itself off when you have done it, and offers
+**Do it for me**. Reopen the guide any time with **Guide** in the top bar; it remembers your step.
+
+The reference plant is the sample floor plan rebuilt with walls,
 zones, aisles, AGV routes, four connected lines, vehicles and operators. **New** starts an
 empty factory; **Sample** reloads the reference.
 
