@@ -168,5 +168,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Capture server running from ${ROOT}`);
   console.log(`  This computer:  http://localhost:${PORT}/capture.html`);
   for (const ip of lan) console.log(`  Phone (Wi-Fi):  http://${ip}:${PORT}/capture.html`);
-  console.log('  Line Builder:   /builder.html · Megafactory: /index.html\n');
+  console.log('  Line Builder:   /builder.html · Demo hub: /index.html\n');
 });
