@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+# Phone captures can be confidential factory photos; commit deliberately (git add -f)
+captures/
+.img2threejs/
