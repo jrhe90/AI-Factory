@@ -8,7 +8,7 @@ in the browser.
 |------|------------|
 | `index.html` | Demo hub |
 | `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
-| `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
+| `megafactory.html` | **Megafactory Twin**: utility-scale battery plant, modelled on Tesla's Lathrop Megafactory (see [Megafactory Twin](#megafactory-twin)) |
 | `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
 | `capture.html` | Phone capture for the photo → 3D model pipeline (needs `node tools/capture-server.mjs`, see [Photo → 3D model](#photo--3d-model-img2threejs)) |
 | `factory-builder/` | **Sim Factory Builder**: import your own layout (image, PDF or DXF), build the twin from a reusable library, draw AGV routes, staff stations and simulate (React + Vite, see [its README](factory-builder/README.md); a prebuilt copy is at `factory-builder/dist/`) |
@@ -112,127 +112,100 @@ All figures are illustrative and simulated. This demo is not affiliated with or 
 
 ---
 
-# Megafactory Line Simulator
+# Megafactory Twin
 
 ![megafactory](assets/megafactory.jpg)
 
-A real-time 3D simulation of a utility-scale battery pack production line, inspired by
-Tesla's Megafactory (Lathrop, CA). Open `megafactory.html`.
+A whole-plant digital twin of a utility-scale battery factory, modelled on Tesla's Megafactory in
+Lathrop, CA. Open `megafactory.html`. The build plan and its decisions are in
+[`docs/megafactory-v2-plan.md`](docs/megafactory-v2-plan.md).
 
-![stations](https://img.shields.io/badge/stations-23-e82127) ![lines](https://img.shields.io/badge/lines-4-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
-
-## What's simulated
-
-Four connected lines share one flow engine. Each station holds one unit, and units keep a minimum
-spacing, so a slow or broken station leaves the stations after it with no work (**Starved**) and
-makes the ones before it wait (**Blocked**). Lines hand units to each other, so a problem upstream
-works its way through the plant.
+## Process
 
 ```
-Body in White ──► Powder Coat (overhead conveyor) ──► Pack line ──► Crane ──► Pickup pad
-                                                                                  │ straddle carriers
-                                                       Outbound trucks ◄── Storage lot ◄┘
-                                                         ▲
-Battery Modules ──► Rack warehouse ──► AGVs ─────────────┘ (4 trays per pack)
+Rail stock → Body in White (4) → Load & Hang ──┐                      Door & panel kits ─┐
+                                               ▼                                         ▼
+   Pretreatment (5-stage wash) → Dry-off oven → Primer booth → Primer touch-up → Gel oven → Cool
+   → Topcoat booth → Topcoat touch-up → Cure oven → Cooling tunnel → Inspection ─┬─ pass ──┐
+                                        Strip & recoat ◄── Paint repair ◄── reject ┘        │
+   Coated frame buffer ◄────────────────────────────────────────────────────────────────────┘
+   → Drop & Unload ─┬─ frames → Pack line: Chassis Load → HV Busbar → Module Install → Thermal
+                    │                      → Enclosure & Doors → Coolant Fill → End-of-Line Test
+                    │                      → Final QA → Gantry crane → Pickup pad
+                    └─ door kits → Coated doors buffer ─(tugger)→ Enclosure & Doors
+Cells → Battery modules (6) → Module racks (56 trays) ─(AGVs, 4 trays per pack)→ Module Install
+Pickup pad ─(straddle-carrier pair)→ Storage lot (60) ─(pair)→ Truck bay → shipped
 ```
 
-### Modelled on the Lathrop Megafactory video
+## Simulation
 
-The look and process details follow Tesla's *Meet Megafactory* video of the Lathrop, CA plant:
+`src/megafactory/sim.js` and `plant.js` are an event-driven simulation in minutes. The state is plain
+data and every random draw is keyed by (seed, stream, entity, index), so the same seed always gives
+the same run and a running plant can be forked with `structuredClone` (ready for a future
+multiverse view).
 
-- Bright white building with a white column grid (with grid labels like G13), polished concrete floor,
-  open steel roof joists and dense LED high-bays. The roof hides when you orbit above it.
-- Yellow 6-axis robots. Body-in-White welding happens inside red translucent welding-curtain cells
-  with red fixtures and welders. Yellow bridge cranes with blue hoists run over the pack line and BIW.
-- Paint shop on a blue overhead conveyor: a stainless wash tunnel with nozzle risers spraying water,
-  and a booth lit by tall light panels.
-- On the pack line, packs ride low floor rails and the work is mostly manual. Technicians build an
-  orange HV busbar spine first; operators then use lift-assist arms to slide orange-faced modules
-  in from both sides. Doors swing shut as they're hung, and the thermal roof has two rows of fans
-  and side louvres.
-- The module line has silver aluminium guarding and light curtains, and a robot with a red gripper
-  places the green BMS boards.
-- Takt is calibrated to the video's "1 Megapack every 68 minutes". Finished units are staged in a yard
-  outside the east wall.
+- **Nodes:** stations (one unit, manual work lognormal ±15 %, automatic ±3 %), accumulating
+  conveyors (units keep their spacing and glide up when the one ahead leaves), buffers, a sink.
+- **Behaviour:** breakdowns (MTBF/MTTR, booths separately), test re-runs at Module EOL (3 %) and
+  End-of-Line Test (6 %), paint inspection with film thickness, gloss and a reject reason, spot repair
+  or strip and recoat, 14 paint carriers, frames and door kits kept in balance on the shared rail,
+  four trays and one door kit consumed per pack, three straddle-carrier pairs, trucks booked by lot
+  stock.
+- **Calibration:** End-of-Line Test is the constraint at about 67 min per pack (≈ 30.5 GWh/yr).
+  `node tools/sim-check.mjs [days]` checks determinism, forking, takt and the bottleneck over 5 seeds.
 
-### Body in White (back of plant)
-| # | Station | What happens |
-|---|---------|--------------|
-| 01 | Base Frame Weld | Robots weld roll-formed rails into the base frame |
-| 02 | Side Post Weld | 14 vertical posts are welded on |
-| 03 | Roof Rail Weld | Top rails close the frame into a rigid box |
-| 04 | Geometry Check | Laser arch scans the frame against CAD |
+## In the 3D view
 
-### Powder Coat (overhead power-and-free conveyor)
-| # | Station | What happens |
-|---|---------|--------------|
-| 01 | Load & Hang | Frame is lifted off the BIW conveyor onto a carrier |
-| 02 | Pre-treatment Wash | Degrease and conversion coat (spray mist) |
-| 03 | Powder Booth | Spray robots coat the frame white |
-| 04 | Cure Oven | Powder cures at ~200 °C (frame glows while inside) |
-| 05 | Cool & Inspect | Fans cool the frame, then it rides the rail across the plant |
+- **Body in White:** rail stock, red weld cells with yellow robots throwing weld sparks, frames
+  welded up piece by piece (base rails, posts, top rails), a laser geometry arch.
+- **Powder coat shop:** power-and-free rail with empty carriers returning to Load & Hang; cut-away
+  wash tunnel spraying only the stage a part is in; dry-off, gel and cure ovens with burners, fans,
+  vapour and heat haze; primer and topcoat booths with reciprocating gun bars, powder that wraps onto
+  the part and overspray that drifts to the cartridge wall. A finish shader sweeps the powder on from
+  the gun line (bare steel → wet → epoxy primer → white topcoat → gloss after cure) and makes parts glow
+  in the ovens. Painters in hooded coveralls touch up by hand; an inspector gauges every part and a
+  live readout shows primer and topcoat thickness, gloss and PASS / REJECT.
+- **Battery modules:** guarded robot cells with light curtains, laser-weld sparks, a potting gantry,
+  trays filling with cells, welds, potting, lids and BMS boards; a stacker crane puts trays in the racks.
+- **Pack line:** the HV busbar spine goes in piece by piece, modules slide in from both sides with
+  lift-assist arms, the hoist lowers the thermal roof, sixteen doors swing shut, the coolant hose drops,
+  a scanner sweeps the pack at End-of-Line Test (red light on a failed test), crews work each station.
+- **Outbound:** the gantry crane lifts each pack onto the pickup pad; straddle-carrier pairs drive in,
+  carry it out of the south door, along the lanes and into a lot slot, and later onto a flatbed truck
+  that queues on the road, loads at the bay and leaves with the pack.
+- **Site:** boulevard and north parking, west office, parking and substation, truck road with gate,
+  drop trailers, trees and light poles. Employee cars (Model Y / Model 3) fill the lots for the day
+  shift and thin out in the evening, following the factory clock.
+- **Rendering:** ACES tone mapping, soft shadows, GTAO, bloom and vignette; static geometry merged per
+  material; moving rigs (people, robots, carriers, trucks…) drawn as one instanced mesh per part;
+  floor stencils and grid labels on texture atlases; andon lamps instanced with per-lamp colour.
 
-The rail climbs over the warehouse and drops coated frames straight onto the pack line's Chassis Load station.
-Frames waiting on the rail act as the buffer.
+## Controls
 
-### Battery Modules
-| # | Station | What happens |
-|---|---------|--------------|
-| 01 | Cell Intake & Test | Cells are scanned and tested; a tray is indexed onto the line |
-| 02 | Cell Insertion | 144 cells loaded into twelve module carriers |
-| 03 | Interconnect Weld | Laser welding to copper collector plates (sparks) |
-| 04 | Adhesive & Potting | Dispensing head fills the gaps with potting compound |
-| 05 | Module Lid & BMS Board | Robot with a red gripper places lids and green BMS boards |
-| 06 | Module EOL Test | Isolation and BMS checks; ~3% re-tested |
+- **Drag / scroll** to orbit and zoom. **Space** pauses. Speeds: 1 s = 1, 4, 15 or 60 factory minutes.
+- **Camera presets** (keys 1–0): plant, paint shop and outbound views, including the booths, cure
+  oven, inspection, crane, storage lot, truck bay, parking and the whole site.
+- **Follow a frame** (F) rides along through the paint shop; **Follow a pack** (G) from Chassis Load to
+  the truck. You can orbit while following.
+- **Click a station** in 3D, or open **Stations** (L) for a list by line, to see its status, current
+  unit, plan vs measured cycle and time split, and to **inject or clear a fault**. A red dot on a
+  line tab marks a line with a station down. **Random faults** turns breakdowns on and off.
+- **KPIs:** packs built and shipped (MWh), takt, run-rate, the live bottleneck, paint and end-of-line
+  first-pass yield, coated frames waiting, module trays in the racks, packs in the lot and trucks waiting.
+- **Director tour** (D) plays a scripted cinematic tour under letterbox bars: thirteen shots from the
+  whole site through Body in White, pretreatment, the booths (riding along with the part being
+  sprayed), the ovens, modules, the pack line, End-of-Line Test, outbound and shipping, with captions
+  that read live numbers (first-pass yield, takt, packs shipped, GWh/yr). Cuts dip to black; Esc or D exits.
+- **Orbit** (C) slowly circles the current view; **4K still** (P) saves a 3840 × 2160 PNG of the 3D view.
+- **H** hides the panels; **Quality** switches GTAO and pixel ratio for slower GPUs. If the frame rate
+  stays under 30 fps for a few seconds the page drops to low quality once and says so.
+- **Phones:** the ☰ button opens all views and controls as a sheet; the KPI strip scrolls sideways.
+- URL options: `?seed=`, `?speed=`, `?view=`, `?quality=low`, `?clean=1`, `?follow=1` or
+  `?follow=pack`, `?director=1`, `?paused=1`, and `?until=PRIMER` (run on until a part is at the guns or part-way
+  through any section; add `&unit=frame` for a frame rather than a door kit).
+- `window.megafactory` exposes the sim, `injectFault`, the views and `megafactory.perf` (CPU time per frame).
 
-Finished trays (12 modules each) go into the rack warehouse. Each crate on the racks is one tray in
-stock, up to 56. When the racks are full the module line backs up. The pack line's Module Install
-station takes 4 trays (48 modules) per pack and is starved if stock runs out.
-
-### Pack line
-| # | Station | What happens |
-|---|---------|--------------|
-| 01 | Chassis Load | Coated frame is lowered off the paint rail onto a steel skid |
-| 02 | HV Busbar & Harness | Technicians build the orange HV busbar spine down the centre |
-| 03 | Module Install | AGVs bring trays; lift-assist arms slide 48 modules in from both sides |
-| 04 | Thermal & Inverter | Hoist sets the thermal roof with fans and power electronics |
-| 05 | Enclosure & Doors | 16 doors are hung and swing shut, then the end caps go on |
-| 06 | Coolant Fill | Hose drops in, coolant loop is filled and leak-checked |
-| 07 | End-of-Line Test | Scanner sweeps the pack; ~6% fail and are re-tested |
-| 08 | Final QA | Inspection arch, release to shipping |
-
-A gantry crane then sets each finished pack on a pickup pad inside the building.
-
-### Site, storage lot and outbound logistics
-
-The site layout follows the MFTX aerial view:
-
-- **North:** employee parking along the boulevard, with passing traffic.
-- **Cars** are low-poly Model Y and Model 3 shapes in factory paint colours. The Model Y has the
-  full-width light bar and black cladding; the Model 3 has slim swept headlights. Employees drive in,
-  park nose-in, back out and leave. How full the lots are follows the factory clock: they fill up for
-  the 6 AM day shift and thin out after 6 PM, with visitors coming and going in between.
-- **West:** an office block, a second parking lot and a fenced substation yard.
-- **South:** dock doors along the wall, with drop trailers backed in, and a large concrete court
-  that holds the **Megapack storage lot**.
-
-Finished packs move like this:
-
-1. **Three tandem pairs of red straddle carriers** (six machines, styled on the units in the site
-   photos) pick each pack up from the pad and carry it out through the south door. They drive
-   crab-style down the lot's aisles and set it in a free slot (60 slots).
-2. **Outbound flatbed trucks** arrive on the south road and stop at the loading bay. A carrier pair
-   brings the oldest stored pack and lowers it onto the trailer, and the truck leaves. A pack counts
-   as shipped when its truck leaves the site.
-3. **Truck bookings follow stock:** more trucks come when the lot is above 40 packs, fewer when it
-   drops below 12.
-
-If the lot fills up, the pad stays occupied, the crane has to wait and the pack line backs up.
-
-**Time scale**: 1 simulated second = 5 factory minutes. The pack line's End-of-Line test is the
-plant bottleneck, giving a takt of about 68 minutes per pack, the figure quoted in the Megafactory
-video. At ~3.9 MWh per pack that is roughly a 30 GWh/year run-rate before downtime. The feeder lines run a little faster, so they fill
-their buffers and then wait.
+All figures are illustrative and simulated; this is not affiliated with or endorsed by Tesla.
 
 ## Line Builder (generic objects, FlexSim-style)
 
@@ -314,25 +287,12 @@ and blocked/starved stats all work as usual. Equipment uses the `captured` type:
 the floor. A model that fails to load shows as an orange placeholder box. Models built from one
 photo are approximate: sides the camera didn't see are guessed.
 
-## Controls
-
-- **Drag / scroll** — orbit and zoom
-- **Click a station** (in 3D or in the list) — focus the camera and open its stats card;
-  inject or clear a fault from there
-- **Space** — pause / resume
-- **½× … 8×** — simulation speed
-- **Camera presets** — Overview, Follow pack (follows a pack all the way onto its truck), Module line, Body in White, Powder coat, Crane, Storage lot, Parking, Site
-- **Line tabs** in the station panel switch between the four lines; a red dot marks a line with a fault
-- **Random faults** — toggle random station breakdowns
-
-`window.megafactory` exposes `{ sim, lines, stations, moduleStock }` in the browser console for poking at the model.
-
 ## Project layout
 
 ```
 index.html       demo hub
 motors.html      Electric Motor Plant (AI digital twin)
-megafactory.html Megafactory simulation page
+megafactory.html Megafactory Twin page (megafactory-v2.html redirects here)
 builder.html     Line Builder page (generic objects + layout editor)
 capture.html     phone page for photographing equipment (served by tools/capture-server.mjs)
 assets/          hub preview images
@@ -345,11 +305,12 @@ tools/           capture-server.mjs (LAN upload + static server), register-model
 .claude/skills/  photo-to-model: Claude Code skill that runs img2threejs on a capture
 src/builder/     Line Builder object library, flow engine and editor; captured.js loads captured models
 src/capture/     capture page script and styles
-src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
+src/megafactory/ Megafactory Twin: plant.js (process graph + layout), sim.js (event-driven sim),
+                 app.js, hud.js, director.js, style.css; render/ (stage, building, paintshop, equipment,
+                 logistics, site, items, packmodel, finish shader, particles, people, instancer)
 src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
-src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping
-src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, lift-assist, truck, AGV, worker, straddle carrier, trailer, yard vehicles
-src/style.css    HUD styles
+src/models.js    shared procedural meshes: robot, lift-assist, truck, straddle carrier, trailer,
+                 forklift, module tray, finished pack (also used by the motor plant and Line Builder)
+tools/sim-check.mjs  Megafactory sim checks: determinism, forking, takt, bottleneck
 ```
 
-All figures are illustrative; this is not affiliated with or endorsed by Tesla.
