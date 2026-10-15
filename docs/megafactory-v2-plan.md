@@ -31,6 +31,12 @@ Where we go further: coverage that builds up on the part as the guns sweep (inst
 instant colour swap), powder wrap and overspray extraction, manual hand-gun operators, oven heat
 shimmer, wash spray and mist, and HUD panels that cover less of the scene.
 
+## Status
+
+- **Phase 1: done.** Preview at `megafactory-v2.html`. Sim calibrated (≈ 67 min/pack, EOL constraint),
+  deterministic and forkable; building, placeholder equipment for every area, units, HUD.
+- Phase 2: next.
+
 ## Phases
 
 ### Phase 1: Foundation

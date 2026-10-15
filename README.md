@@ -9,6 +9,7 @@ in the browser.
 | `index.html` | Demo hub |
 | `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
 | `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
+| `megafactory-v2.html` | **Megafactory Twin (v2, preview)**: the rebuild in progress, see [Megafactory v2](#megafactory-v2-preview) |
 | `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
 | `capture.html` | Phone capture for the photo → 3D model pipeline (needs `node tools/capture-server.mjs`, see [Photo → 3D model](#photo--3d-model-img2threejs)) |
 | `factory-builder/` | **Sim Factory Builder**: import your own layout (image, PDF or DXF), build the twin from a reusable library, draw AGV routes, staff stations and simulate (React + Vite, see [its README](factory-builder/README.md); a prebuilt copy is at `factory-builder/dist/`) |
@@ -109,6 +110,32 @@ Shipping, Follow motor and a looping **Tour**. `window.motorPlant` exposes the m
 console (`motorPlant.snapshot()`, `motorPlant.advance(seconds)`, `motorPlant.jump('assembly')`).
 
 All figures are illustrative and simulated. This demo is not affiliated with or endorsed by ABB.
+
+---
+
+# Megafactory v2 (preview)
+
+`megafactory-v2.html` is the rebuild of the Megafactory sim described in
+[`docs/megafactory-v2-plan.md`](docs/megafactory-v2-plan.md). It replaces `megafactory.html` once it
+has everything the current page has (end of Phase 3). Phase 1, the foundation, is in place:
+
+- **Simulation** (`src/megafactory/sim.js`, `plant.js`): event-driven, time in minutes, state as plain
+  data with hash-keyed randomness, so the same seed always gives the same run and a running plant can be
+  forked with `structuredClone`. Stations, accumulating conveyors (units keep their spacing and glide up
+  when the one ahead leaves), buffers, breakdowns, test re-runs, paint rejects with spot repair or strip
+  and recoat, tray and door-kit consumption, and truck bookings that follow lot stock.
+- **Process:** BIW (4) → Load & Hang → 5-stage pretreatment → dry-off → primer booth → primer touch-up →
+  gel oven → cool → topcoat booth → topcoat touch-up → cure oven → cooling → inspection → coated-frame
+  buffer → drop → pack line (8) → crane → pad → storage lot → trucks. Frames and door kits share the
+  paint rail (one of each per pack) and 14 carriers circulate. Battery modules (6) feed a 56-tray rack.
+- **Calibration:** End-of-Line Test is the constraint, about 67 min per pack (≈ 30.5 GWh/yr).
+  `node tools/sim-check.mjs` checks determinism, forking, takt and the bottleneck over 5 seeds.
+- **Rendering** (`src/megafactory/render/`): ACES tone mapping, soft shadows, GTAO, bloom and vignette;
+  static geometry merged per material; canvas textures (polished concrete, wall panels, grid labels);
+  cut-away paint enclosures; live floor stencils with plan vs measured cycle; andon lamps.
+- **HUD:** clock and speeds (1 s = 1, 4, 15 or 60 min), camera presets (keys 1–7), quality toggle,
+  KPI strip, click a station for its status, measured cycle and time split. URL options:
+  `?seed=`, `?speed=`, `?view=`, `?quality=low`, `?clean=1`. `window.megafactory` exposes the sim.
 
 ---
 
