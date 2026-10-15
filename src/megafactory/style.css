@@ -175,3 +175,38 @@ body.card-open .stations { display: none; }
 .btn.danger.clear { border-color: rgba(61, 220, 132, 0.55); color: #c8f7da; }
 .btn.danger.clear:hover { background: rgba(61, 220, 132, 0.14); }
 @media (max-width: 760px) { .rail { display: none; } .legend { left: max(12px, env(safe-area-inset-left, 0px)); } }
+/* Phase 4: director mode letterbox, caption and cuts */
+.lbar { position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 15; overflow: hidden; display: flex; align-items: center;
+  padding-left: max(4vw, env(safe-area-inset-left, 0px)); padding-right: max(4vw, env(safe-area-inset-right, 0px)); transition: height 0.8s cubic-bezier(0.6, 0, 0.2, 1); }
+.lbar.top { top: 0; }
+.lbar.bottom { bottom: 0; justify-content: space-between; gap: 16px; }
+body.director .lbar { height: 11vh; }
+body.director .lbar.top { padding-top: env(safe-area-inset-top, 0px); }
+body.director .lbar.bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.lmark { display: flex; align-items: center; gap: 10px; font: 700 15px var(--display); letter-spacing: 0.32em; color: #d5dbe2; }
+.lmark i { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #ff3b47, #b3121f); }
+.cap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cap b { font: 700 clamp(20px, 2.6vw, 38px)/1.05 var(--display); letter-spacing: 0.03em; color: #fff; }
+.cap span { font: 400 clamp(12px, 1.15vw, 17px)/1.35 var(--ui); color: #aeb8c3; }
+.esc { font: 600 11px var(--ui); color: #5f6975; letter-spacing: 0.1em; white-space: nowrap; }
+.lfade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 14; }
+body.director .panel, body.director .legend, body.director .labels3d, body.director .tip, body.director .toasts { display: none !important; }
+.btn.menu { display: none; }
+@media (prefers-reduced-motion: reduce) { .lbar { transition: none; } }
+
+/* Phase 4: phone layout — the rail opens as a sheet from the menu button, KPIs scroll sideways */
+@media (max-width: 760px) {
+  .btn.menu { display: block; }
+  body.menu-open .rail { display: grid; top: calc(76px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+    width: auto; max-height: calc(100% - 200px); grid-template-columns: 1fr 1fr 1fr; z-index: 7; }
+  body.menu-open .legend { display: none; }
+  .kpis { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .kpis::-webkit-scrollbar { display: none; }
+  .kpi { flex: 0 0 36%; scroll-snap-align: start; }
+  .kpi.hero { flex-basis: 40%; }
+  .kpi + .kpi { border-top: 0 !important; border-left: 1px solid var(--line) !important; }
+  .stations { top: calc(76px + env(safe-area-inset-top, 0px)); bottom: auto; }
+  .card { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .followchip { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 24px); }
+  .esc { display: none; }
+}

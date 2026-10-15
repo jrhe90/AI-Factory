@@ -25,6 +25,7 @@ export class Hud {
       <div class="brand"><div class="mark" aria-hidden="true"></div>
         <div><h1>MEGAFACTORY</h1><p>Utility-scale battery plant · powder coat → modules → pack line → yard</p></div></div>
       <div class="spacer"></div>
+      <button class="btn icon menu" id="menuBtn" aria-label="Views and controls" aria-expanded="false">☰</button>
       <div class="clock"><b id="clk">06:00</b><span id="day">Mon · day 1</span></div>
       <div class="seg"><button class="btn icon" id="pause" title="Pause (Space)" aria-label="Pause">❚❚</button>
         <span class="seg" id="speeds"></span><span class="rate" id="rate"></span></div>`);
@@ -38,6 +39,7 @@ export class Hud {
       this.$('speeds').append(b);
     });
     this.$('pause').onclick = () => onPause();
+    this.$('menuBtn').onclick = () => this.menu();
 
     const rail = h('nav', 'panel rail');
     let group = null;
@@ -63,6 +65,12 @@ export class Hud {
     const q = h('button', 'btn', 'Quality: high'); q.id = 'quality'; q.onclick = () => onQuality();
     const hide = h('button', 'btn', 'Hide panels'); hide.title = 'Hide panels (H)'; hide.onclick = () => document.body.classList.toggle('clean');
     rail.append(st, faults, q, hide);
+    rail.append(h('h3', '', 'Present'));
+    const dir = h('button', 'btn', 'Director tour'); dir.title = 'Cinematic tour with captions, for presenting or recording (D)'; dir.onclick = () => this.cb.onDirector?.();
+    const orb = h('button', 'btn', 'Orbit'); orb.id = 'orbitBtn'; orb.title = 'Slow cinematic orbit around the view (C)'; orb.onclick = () => this.cb.onOrbit?.();
+    const still = h('button', 'btn', '4K still'); still.title = 'Save a 3840 × 2160 image of the 3D view (P)'; still.onclick = () => this.cb.onStill?.();
+    rail.append(dir, orb, still);
+    rail.querySelectorAll('.btn').forEach(b => b.addEventListener('click', () => { if (innerWidth <= 760) this.menu(false); }));
     document.body.append(rail);
 
     const legend = h('div', 'legend', Object.values(STATUS).map(s => `<span><i style="color:${s.color};background:${s.color}"></i>${s.label}</span>`).join(''));
@@ -97,6 +105,18 @@ export class Hud {
     document.body.append(this.followEl);
     this.selected = -1;
     this.logSeen = 0;
+  }
+
+  // phone: the camera rail opens as a sheet from the menu button
+  menu(open) {
+    const on = document.body.classList.toggle('menu-open', open);
+    this.$('menuBtn').setAttribute('aria-expanded', String(on));
+  }
+  setOrbit(on) { this.$('orbitBtn').classList.toggle('on', on); }
+  toast(text, kind = 'ok') {
+    const t = h('div', `toast ${kind}`, text);
+    this.toasts.prepend(t);
+    setTimeout(() => t.remove(), 4200);
   }
 
   setFollow(text) {

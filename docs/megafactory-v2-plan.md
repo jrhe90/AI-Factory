@@ -42,7 +42,9 @@ shimmer, wash spray and mist, and HUD panels that cover less of the scene.
   rebuilt; fault inject/clear, station list, bottleneck and energy KPIs. `megafactory.html` now runs the
   new build (`megafactory-v2.html` redirects) and the old `src/main.js`, `src/site.js` and `src/style.css`
   are removed.
-- Phase 4: next.
+- **Phase 4: done.** Director tour with letterbox captions and live numbers, cinematic orbit, 4K stills,
+  phone layout (menu sheet, scrolling KPIs), automatic quality drop on slow devices.
+- Next: the parked multiverse view.
 
 ## Phases
 

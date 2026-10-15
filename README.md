@@ -192,9 +192,16 @@ multiverse view).
   line tab marks a line with a station down. **Random faults** turns breakdowns on and off.
 - **KPIs:** packs built and shipped (MWh), takt, run-rate, the live bottleneck, paint and end-of-line
   first-pass yield, coated frames waiting, module trays in the racks, packs in the lot and trucks waiting.
-- **H** hides the panels; **Quality** switches GTAO and pixel ratio for slower GPUs.
+- **Director tour** (D) plays a scripted cinematic tour under letterbox bars: thirteen shots from the
+  whole site through Body in White, pretreatment, the booths (riding along with the part being
+  sprayed), the ovens, modules, the pack line, End-of-Line Test, outbound and shipping, with captions
+  that read live numbers (first-pass yield, takt, packs shipped, GWh/yr). Cuts dip to black; Esc or D exits.
+- **Orbit** (C) slowly circles the current view; **4K still** (P) saves a 3840 × 2160 PNG of the 3D view.
+- **H** hides the panels; **Quality** switches GTAO and pixel ratio for slower GPUs. If the frame rate
+  stays under 30 fps for a few seconds the page drops to low quality once and says so.
+- **Phones:** the ☰ button opens all views and controls as a sheet; the KPI strip scrolls sideways.
 - URL options: `?seed=`, `?speed=`, `?view=`, `?quality=low`, `?clean=1`, `?follow=1` or
-  `?follow=pack`, `?paused=1`, and `?until=PRIMER` (run on until a part is at the guns or part-way
+  `?follow=pack`, `?director=1`, `?paused=1`, and `?until=PRIMER` (run on until a part is at the guns or part-way
   through any section; add `&unit=frame` for a frame rather than a door kit).
 - `window.megafactory` exposes the sim, `injectFault`, the views and `megafactory.perf` (CPU time per frame).
 
@@ -299,7 +306,7 @@ tools/           capture-server.mjs (LAN upload + static server), register-model
 src/builder/     Line Builder object library, flow engine and editor; captured.js loads captured models
 src/capture/     capture page script and styles
 src/megafactory/ Megafactory Twin: plant.js (process graph + layout), sim.js (event-driven sim),
-                 app.js, hud.js, style.css; render/ (stage, building, paintshop, equipment,
+                 app.js, hud.js, director.js, style.css; render/ (stage, building, paintshop, equipment,
                  logistics, site, items, packmodel, finish shader, particles, people, instancer)
 src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
 src/models.js    shared procedural meshes: robot, lift-assist, truck, straddle carrier, trailer,

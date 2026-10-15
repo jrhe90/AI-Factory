@@ -11,6 +11,7 @@ import { buildLogistics } from './render/logistics.js';
 import { buildSite } from './render/site.js';
 import { instancer } from './render/instancer.js';
 import { Hud, SPEEDS } from './hud.js';
+import { Director } from './director.js';
 
 const params = new URLSearchParams(location.search);
 const WARMUP = 1440;       // a day to fill the plant, then KPIs count from Tue 06:00
@@ -50,16 +51,40 @@ const hud = new Hud({
   onFault: (n) => { injectFault(sim, n); hud.update(sim); },
   onClear: (n) => { clearFault(sim, n); hud.update(sim); },
   onFaults: (on) => { sim.p.faults = on; },
+  onDirector: () => director.toggle(),
+  onOrbit: () => setOrbit(!stage.controls.autoRotate),
+  onStill: () => saveStill(),
   onQuality: () => { stage.setQuality(stage.quality === 'high' ? 'low' : 'high'); hud.setQuality(stage.quality); },
   onClose: () => hud.select(sim, -1),
 });
 hud.setSpeed(speed, paused);
 if (params.get('clean')) document.body.classList.add('clean');
 if (params.get('quality') === 'low') { stage.setQuality('low'); hud.setQuality('low'); }
+if (params.get('director')) setTimeout(() => director.start(), 50);
 if (params.get('follow')) setTimeout(() => startFollow(params.get('follow') === 'pack' ? 'pack' : 'frame'), 50);
 if (params.get('view') && VIEWS[params.get('view')]) {
   const v = VIEWS[params.get('view')];
   stage.camera.position.set(...v.pos); stage.controls.target.set(...v.target);
+}
+
+// ---------------- presenting: director tour, cinematic orbit, 4K stills
+const director = new Director({
+  stage, items, sim,
+  onStart: () => { stopFollow(); setOrbit(false); hud.select(sim, -1); if (paused) { paused = false; hud.setSpeed(speed, paused); } },
+  onStop: () => stage.view('overview'),
+});
+function setOrbit(on) { stage.controls.autoRotate = on; hud.setOrbit(on); }
+function saveStill() {
+  const url = stage.capture(3840, 2160);
+  const a = document.createElement('a');
+  const c = clockStamp();
+  a.href = url; a.download = `megafactory-${c}.png`;
+  document.body.append(a); a.click(); a.remove();
+  hud.toast('Saved a 3840 × 2160 still of the 3D view');
+}
+function clockStamp() {
+  const m = Math.floor(sim.t + 360), d = Math.floor(m / 1440) + 1;
+  return `day${d}-${String(Math.floor(m % 1440 / 60)).padStart(2, '0')}${String(m % 60).padStart(2, '0')}`;
 }
 
 // ---------------- ride along with a frame (paint shop) or a pack (pack line → truck)
@@ -125,7 +150,7 @@ function pick(ev) {
   return best;
 }
 let down = null;
-stage.renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+stage.renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; if (stage.controls.autoRotate) setOrbit(false); });
 stage.renderer.domElement.addEventListener('pointerup', (e) => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
   hud.select(sim, pick(e));
@@ -140,7 +165,10 @@ addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea')) return;
   if (e.key === ' ') { e.preventDefault(); paused = !paused; hud.setSpeed(speed, paused); }
   else if (e.key === 'h' || e.key === 'H') document.body.classList.toggle('clean');
-  else if (e.key === 'Escape') { hud.select(sim, -1); stopFollow(); }
+  else if (e.key === 'Escape') { if (director.on) director.stop(); else { hud.select(sim, -1); stopFollow(); } }
+  else if (e.key === 'd' || e.key === 'D') director.toggle();
+  else if (e.key === 'c' || e.key === 'C') setOrbit(!stage.controls.autoRotate);
+  else if (e.key === 'p' || e.key === 'P') saveStill();
   else if (e.key === 'f' || e.key === 'F') { follow ? stopFollow() : startFollow('frame'); }
   else if (e.key === 'g' || e.key === 'G') { follow ? stopFollow() : startFollow('pack'); }
   else if (e.key === 'l' || e.key === 'L') hud.toggleStations();
@@ -155,6 +183,18 @@ function drawStencils() {
     st.draw(d.label, [`PLAN ${d.time} MIN · ${d.mode.toUpperCase()}`, `ACTUAL ${meas ? meas.toFixed(1) : '–'} MIN · ${nd.done} DONE`]);
   }
   eq.stencilAtlas.commit();
+}
+
+// ---------------- drop to low quality once if the frame rate stays low (the viewer can switch back)
+let slowFor = 0, autoDone = params.get('quality') != null;
+function autoQuality(dt) {
+  if (autoDone || document.hidden || stage.quality !== 'high') return;
+  slowFor = perf.fps < 30 && performance.now() > 6000 ? slowFor + dt : 0;
+  if (slowFor > 4) {
+    autoDone = true;
+    stage.setQuality('low'); hud.setQuality('low');
+    hud.toast('Switched to Quality: low for smoother playback', 'warn');
+  }
 }
 
 // ---------------- main loop
@@ -177,6 +217,7 @@ function frame(now) {
   updateFollow();
   perf.cpu = perf.cpu * 0.95 + (performance.now() - c0) * 0.05;
   perf.fps = perf.fps * 0.95 + (dt > 0 ? 1 / dt : 0) * 0.05;
+  autoQuality(dt);
   building.update(stage.camera);
   stage.update(dt);
   stage.render();
@@ -192,4 +233,4 @@ const loading = document.getElementById('loading');
 if (loading) { loading.style.opacity = '0'; setTimeout(() => loading.remove(), 700); }
 
 // console access for checks and demos
-window.megafactory = { sim, step, status, kpis, utilisation, fork, injectFault, stage, items, paint, logistics, site, view: (k) => stage.view(k), follow: startFollow, perf, SPEEDS };
+window.megafactory = { sim, step, status, kpis, utilisation, fork, injectFault, stage, items, paint, logistics, site, director, view: (k) => stage.view(k), follow: startFollow, perf, SPEEDS };

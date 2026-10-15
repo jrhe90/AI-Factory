@@ -136,7 +136,15 @@ export class Stage {
   view(key) { const v = VIEWS[key]; if (v) this.flyTo(v.target, v.pos); }
 
   update(dt) {
-    if (this.tween) {
+    if (this.drive) {
+      const shot = this.drive(dt);
+      if (shot) {
+        this.tween = null;
+        this.camera.position.copy(shot.pos);
+        this.controls.target.copy(shot.target);
+        this.camera.lookAt(shot.target);
+      }
+    } else if (this.tween) {
       const tw = this.tween;
       tw.t += dt / tw.dur;
       const k = tw.t >= 1 ? 1 : 1 - Math.pow(1 - tw.t, 3);
@@ -144,7 +152,7 @@ export class Stage {
       this.controls.target.lerpVectors(tw.t0, tw.t1, k);
       if (tw.t >= 1) this.tween = null;
     }
-    this.controls.update(dt);
+    if (!this.drive) this.controls.update(dt);
     // labels fade out with distance so the overview stays legible
     const cp = this.camera.position;
     for (const o of this.labelList) {
@@ -159,6 +167,23 @@ export class Stage {
   render() {
     this.composer.render();
     this.labels.render(this.scene, this.camera);
+  }
+
+  // Render one frame of the 3D view off-screen at W×H (no HUD or labels) and return a PNG data URL
+  capture(W = 3840, H = 2160) {
+    const r = this.renderer, pr = r.getPixelRatio(), size = r.getSize(new THREE.Vector2());
+    r.setPixelRatio(1);
+    r.setSize(W, H, false);
+    this.composer.setPixelRatio(1);
+    this.composer.setSize(W, H);
+    this.camera.aspect = W / H;
+    this.camera.updateProjectionMatrix();
+    this.composer.render();
+    const url = r.domElement.toDataURL('image/png');
+    r.setPixelRatio(pr);
+    r.setSize(size.x, size.y);
+    this.resize();
+    return url;
   }
 }
 const _v = new THREE.Vector3();
