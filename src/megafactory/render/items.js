@@ -6,23 +6,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NODES, N, RAIL_Y, HANG_Y } from '../plant.js';
 import { placeItems } from '../sim.js';
 import { PACK, FRAME_H, createMegapack, createModuleTray, createFinishedPack, createTruck } from '../../models.js';
-
-// powder-coat finish by process stage
-const coat = (color, o) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1, ...o });
-export const COAT = {
-  bare: coat(0x5f666e, { metalness: 0.85, roughness: 0.32 }),
-  stripped: coat(0x7a8088, { metalness: 0.7, roughness: 0.45 }),
-  pretreated: coat(0x4f565e, { metalness: 0.8, roughness: 0.1 }),
-  dry: coat(0x737a82, { metalness: 0.6, roughness: 0.5 }),
-  primer: coat(0x5d636b, { metalness: 0, roughness: 0.95 }),
-  gelled: coat(0x666d75, { metalness: 0, roughness: 0.6 }),
-  topcoat: coat(0xeeeeea, { metalness: 0, roughness: 1 }),
-  cured: coat(0xf3f4f2, { metalness: 0.02, roughness: 0.32 }),
-};
+import { finishMaterial, setFinish } from './finish.js';
 
 const PACK_ORDER = ['CL', 'HV', 'MI', 'TH', 'EN', 'CF', 'EOL', 'QA'].map(k => N[k]);
 const MOD_ORDER = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'].map(k => N[k]);
 const FINISHED = new Set([N.CRANE, N.PAD, N.LOT, N.TRUCK]);
+const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const ease = (k) => k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
 
 function box(w, h, d, x, y, z) { return new THREE.BoxGeometry(w, h, d).translate(x, y, z); }
@@ -82,7 +71,8 @@ export class Items {
     const g = new THREE.Group();
     const u = { g, type: it.type, n: -1, from: null, at: new THREE.Vector3(), rot: 0 };
     if (it.type === 'frame' || it.type === 'doors') {
-      u.body = new THREE.Mesh(it.type === 'frame' ? this.frameGeo : this.doorGeo, COAT.bare);
+      u.mat = finishMaterial();
+      u.body = new THREE.Mesh(it.type === 'frame' ? this.frameGeo : this.doorGeo, u.mat);
       u.body.castShadow = u.body.receiveShadow = true;
       g.add(u.body);
       u.carrier = this.makeCarrier();
@@ -132,6 +122,7 @@ export class Items {
 
   sync(s) {
     const seen = new Set();
+    const live = this.live = [];
     let trays = 0, lot = 0;
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), p3 = new THREE.Vector3(), yAxis = new THREE.Vector3(0, 1, 0);
     let truckLoaded = false;
@@ -174,6 +165,7 @@ export class Items {
       this.stageLook(u, it, n, pl);
       if (u.carrier) this.placeCarrier(u, it, n, x, y, z, r);
       if (n === N.TRUCK) truckLoaded = true;
+      live.push({ u, it, n, pl });
     }
     for (const [id, u] of this.units) if (!seen.has(id)) this.dispose(id, u);
     this.rackTrays.count = trays; this.rackTrays.instanceMatrix.needsUpdate = true;
@@ -211,12 +203,7 @@ export class Items {
 
   stageLook(u, it, n, pl) {
     const d = NODES[n];
-    if (u.body) {
-      // finish changes as the part passes through each process section
-      let c = it.coat || 'bare';
-      if (d.coat && pl.p >= 0.5) c = d.coat;
-      u.body.material = COAT[c] || COAT.bare;
-    }
+    if (u.body) this.finishLook(u, it, n, pl);
     if (u.pack) {
       const k = PACK_ORDER.indexOf(n), p = pl.mf < 1 ? 0 : pl.p;
       const lvl = (station) => k > station ? 1 : k === station ? p : 0;
@@ -235,6 +222,23 @@ export class Items {
       t.lids.count = Math.floor(lvl(4) * 12);
       t.pcbs.count = Math.floor(lvl(4) * 12);
     }
+  }
+
+  // the finish builds up through the process: wet in the washer, powder swept on by the guns,
+  // gloss coming up in the ovens while the part glows with heat
+  finishLook(u, it, n, pl) {
+    const d = NODES[n], a = it.coat || 'bare', p = pl.p;
+    let b = a, o = {};
+    if (d.kind === 'conveyor' && d.coat) {
+      b = d.coat;
+      const q = d.heatFrom ? Math.max(0, (p * d.L - d.heatFrom) / (d.L - d.heatFrom)) : p;
+      if (d.booth) o = { sweep: d.gunX - u.at.x };
+      else if (n === N.PRE) o = { blend: sm(0.04, 0.25, p) };
+      else if (n === N.DRY) o = { blend: sm(0.25, 0.85, p), heat: 0.2 * Math.sin(Math.PI * p) };
+      else if (n === N.GEL) o = { blend: sm(0.2, 0.75, p), heat: 0.42 * Math.sin(Math.PI * p) };
+      else if (n === N.CURE) o = { blend: sm(0.3, 0.8, q), heat: 0.75 * Math.pow(Math.sin(Math.PI * q), 0.7) };
+    } else if (n === N.COOL1 || n === N.COOL2) o = { heat: (n === N.COOL2 ? 0.22 : 0.12) * (1 - p) };
+    setFinish(u.mat, a, b, o);
   }
 
   placeCarrier(u, it, n, x, y, z, r) {

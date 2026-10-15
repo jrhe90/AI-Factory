@@ -117,7 +117,7 @@ All figures are illustrative and simulated. This demo is not affiliated with or 
 
 `megafactory-v2.html` is the rebuild of the Megafactory sim described in
 [`docs/megafactory-v2-plan.md`](docs/megafactory-v2-plan.md). It replaces `megafactory.html` once it
-has everything the current page has (end of Phase 3). Phase 1, the foundation, is in place:
+has everything the current page has (end of Phase 3). Phase 1, the foundation:
 
 - **Simulation** (`src/megafactory/sim.js`, `plant.js`): event-driven, time in minutes, state as plain
   data with hash-keyed randomness, so the same seed always gives the same run and a running plant can be
@@ -133,9 +133,37 @@ has everything the current page has (end of Phase 3). Phase 1, the foundation, i
 - **Rendering** (`src/megafactory/render/`): ACES tone mapping, soft shadows, GTAO, bloom and vignette;
   static geometry merged per material; canvas textures (polished concrete, wall panels, grid labels);
   cut-away paint enclosures; live floor stencils with plan vs measured cycle; andon lamps.
-- **HUD:** clock and speeds (1 s = 1, 4, 15 or 60 min), camera presets (keys 1–7), quality toggle,
-  KPI strip, click a station for its status, measured cycle and time split. URL options:
-  `?seed=`, `?speed=`, `?view=`, `?quality=low`, `?clean=1`. `window.megafactory` exposes the sim.
+- **HUD:** clock and speeds (1 s = 1, 4, 15 or 60 min), camera presets (keys 1–0), quality toggle,
+  KPI strip, click a station for its status, measured cycle and time split.
+
+Phase 2, the powder coat line in detail (`render/paintshop.js`, `finish.js`, `particles.js`, `people.js`):
+
+- **Finish shader:** each frame and door kit has its own material. Powder is swept on from the leading
+  end as the part passes the gun line (bare steel → wet after the washer → light epoxy primer → white
+  topcoat), uncured powder has a matte grain, gloss comes up in the gel and cure ovens, and the part
+  glows with heat inside them and cools down after.
+- **Automatic booths:** two reciprocators per side with four guns each, moving up and down while a
+  part is in front of them. Powder leaves the guns in a cone and is pulled round onto the part
+  (electrostatic wrap); overspray drifts down to the cartridge wall and leaves a haze. Booth light,
+  cartridge module, cyclone, powder feed centre with hoses, gun control cabinet, live gun status chip.
+- **Pretreatment:** five stages with spray risers, nozzles and divider curtains; each stage sprays only
+  while a part is in it, with mist in the heated stages, drips after the tunnel, process tanks, pumps
+  and vapour from the exhaust stacks.
+- **Ovens:** burner boxes with flickering sight glasses, recirculating roof fans, stacks with vapour,
+  heat haze at the openings and a live temperature chip (dry-off 120 °C, gel 180 °C, cure 200 °C).
+- **People:** painters in white coveralls and hoods spray corners and door frames by hand from
+  two-level platforms at the touch-up booths; a repair painter sands then re-sprays; loaders reach up
+  to hook parts; an inspector gauges each part.
+- **Inspection:** dry film thickness for primer and topcoat, gloss, and PASS or REJECT with the reason
+  (low film build, orange peel, dirt inclusion…), all from the simulation.
+- **Carriers:** empty carriers ride the return rail and queue at Load & Hang.
+- **Cameras:** pretreatment, primer booth, topcoat booth, touch-up, cure oven and inspection presets, and
+  **Follow a frame** (F), which rides along with a frame through the shop while you orbit.
+
+URL options: `?seed=`, `?speed=`, `?view=`, `?quality=low`, `?clean=1`, `?follow=1`,
+`?until=PRIMER` (run on until a part is at the guns or mid-way through any section; add `&unit=frame`
+for a frame rather than a door kit), `?paused=1`. `window.megafactory` exposes the sim and
+`megafactory.perf` the CPU time per frame.
 
 ---
 

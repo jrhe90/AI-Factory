@@ -35,7 +35,10 @@ shimmer, wash spray and mist, and HUD panels that cover less of the scene.
 
 - **Phase 1: done.** Preview at `megafactory-v2.html`. Sim calibrated (≈ 67 min/pack, EOL constraint),
   deterministic and forkable; building, placeholder equipment for every area, units, HUD.
-- Phase 2: next.
+- **Phase 2: done.** Detailed powder coat shop: finish shader with gun-line coverage, booths with
+  reciprocators and powder wrap, wash tunnel, ovens, touch-up painters, inspection readout, empty
+  carrier return, paint-shop cameras and follow mode.
+- Phase 3: next.
 
 ## Phases
 

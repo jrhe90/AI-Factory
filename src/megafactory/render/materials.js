@@ -33,6 +33,7 @@ export function materials() {
     panel: std(0xf1f3f5, { roughness: 0.62 }),
     panelGrey: std(0xb9c0c7, { roughness: 0.6 }),
     panelDark: std(0x2b3036, { roughness: 0.55, metalness: 0.2 }),
+    boothWall: std(0x56606b, { roughness: 0.7, metalness: 0.15 }),
     insulated: std(0xe4e2dc, { roughness: 0.8 }),
     rubber: std(0x16181b, { roughness: 0.9 }),
     safety: std(0xf2c230, { roughness: 0.5, metalness: 0.15 }),
@@ -47,12 +48,14 @@ export function materials() {
     // transparent
     poly: glass(0xd8e4ee, 0.16),
     polyRoof: glass(0xe8eef4, 0.10),
+    polyNear: glass(0xe2eaf2, 0.05, { roughness: 0.02 }),
     weldCurtain: glass(0xd0142c, 0.38, { roughness: 0.4 }),
     meshGuard: glass(0x9aa3ad, 0.22, { roughness: 0.6, metalness: 0.4 }),
     // light emitters
     lampWhite: glow(0xffffff, 2.5),
     lampWarm: glow(0xffb070, 2.0),
     ovenGlow: glow(0xff5a14, 1.6),
+    ovenFloor: glow(0x8a2a06, 0.55),
   };
   return cache;
 }

@@ -12,13 +12,18 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 
 export const VIEWS = {
-  overview: { pos: [36, 168, 176], target: [-6, 0, -22], label: 'Overview' },
-  paint: { pos: [-6, 46, -8], target: [-6, 2, -58], label: 'Powder coat' },
-  booths: { pos: [63, 14, -51], target: [53, 2.2, -66], label: 'Topcoat booth' },
-  pack: { pos: [-20, 30, 52], target: [-28, 1, 6], label: 'Pack line' },
-  modules: { pos: [10, 34, 12], target: [8, 1, -24], label: 'Modules' },
-  biw: { pos: [-82, 30, 6], target: [-114, 1, -24], label: 'Body in White' },
-  yard: { pos: [124, 60, 118], target: [60, 0, 62], label: 'Yard' },
+  overview: { pos: [36, 168, 176], target: [-6, 0, -22], label: 'Overview', group: 'Plant' },
+  paint: { pos: [-6, 46, -8], target: [-6, 2, -58], label: 'Powder coat', group: 'Paint shop' },
+  pretreat: { pos: [-62, 15, -49], target: [-78, 2.4, -66], label: 'Pretreatment', group: 'Paint shop' },
+  primer: { pos: [-12, 13, -50], target: [-22, 2.4, -66], label: 'Primer booth', group: 'Paint shop' },
+  topcoat: { pos: [62, 13, -50], target: [53, 2.4, -66], label: 'Topcoat booth', group: 'Paint shop' },
+  touchup: { pos: [81, 5.4, -56.5], target: [72, 2.9, -66], label: 'Touch-up', group: 'Paint shop' },
+  cure: { pos: [70, 14, -36], target: [58, 3, -50], label: 'Cure oven', group: 'Paint shop' },
+  inspection: { pos: [18, 10, -38], target: [8, 2.4, -49], label: 'Inspection', group: 'Paint shop' },
+  pack: { pos: [-20, 30, 52], target: [-28, 1, 6], label: 'Pack line', group: 'Plant' },
+  modules: { pos: [10, 34, 12], target: [8, 1, -24], label: 'Modules', group: 'Plant' },
+  biw: { pos: [-82, 30, 6], target: [-114, 1, -24], label: 'Body in White', group: 'Plant' },
+  yard: { pos: [124, 60, 118], target: [60, 0, 62], label: 'Yard', group: 'Plant' },
 };
 
 export class Stage {

@@ -226,11 +226,7 @@ function enter(s, n, it) {
         it.failAt = it.pStart + dur;
         dur += dur * s.p.retest;
       }
-      if (n === N.INSP) {
-        it.defect = rnd(s.seed, S_DEF, it.id, it.visits) < s.p.paintDefect;
-        s.kpi.inspected++;
-        if (it.defect) { s.kpi.rejects++; note(s, 'reject', n, `${it.name} rejected at paint inspection`); }
-      }
+      if (n === N.INSP) inspect(s, n, it);
       if (n === N.REPAIR) it.fixed = rnd(s.seed, S_FIX, it.id, it.visits) < s.p.touchFix;
       if (n === N.CL) { it.type = 'pack'; it.name = 'MP-' + String(it.serial).padStart(4, '0'); }
       if (n === N.TRUCK) s.trucks--;
@@ -241,6 +237,18 @@ function enter(s, n, it) {
       if (d.consume) consume(s, n, it);
     }
   }
+}
+
+// Paint inspection: dry film thickness (µm) of each coat, gloss (GU) and, for a reject, why
+export const DEFECTS = ['low film build', 'orange peel', 'dirt inclusion', 'sag on door edge', 'thin edge coverage', 'outgassing pinholes'];
+function inspect(s, n, it) {
+  const r = (k) => rnd(s.seed, S_DEF, it.id * 8 + k, it.visits);
+  it.defect = r(0) < s.p.paintDefect;
+  it.reason = it.defect ? DEFECTS[Math.floor(r(1) * DEFECTS.length)] : null;
+  const low = it.reason === 'low film build';
+  it.dft = { primer: Math.round(58 + r(2) * 22), top: Math.round(low ? 44 + r(3) * 8 : 66 + r(3) * 22), gloss: Math.round(it.reason === 'orange peel' ? 62 + r(4) * 8 : 82 + r(4) * 10) };
+  s.kpi.inspected++;
+  if (it.defect) { s.kpi.rejects++; note(s, 'reject', n, `${it.name} rejected · ${it.reason}`); }
 }
 
 function consume(s, n, it) {

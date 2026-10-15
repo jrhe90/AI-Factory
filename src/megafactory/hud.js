@@ -18,8 +18,8 @@ const h = (tag, cls, html = '') => { const e = document.createElement(tag); if (
 const fmt = (v, d = 0) => v == null || !isFinite(v) ? '–' : v.toFixed(d);
 
 export class Hud {
-  constructor({ onSpeed, onPause, onView, onQuality, onClose }) {
-    this.cb = { onSpeed, onPause, onView, onQuality, onClose };
+  constructor({ onSpeed, onPause, onView, onQuality, onClose, onFollow, onStopFollow }) {
+    this.cb = { onSpeed, onPause, onView, onQuality, onClose, onFollow, onStopFollow };
     const top = h('header', 'panel top', `
       <div class="brand"><div class="mark" aria-hidden="true"></div>
         <div><h1>MEGAFACTORY</h1><p>Utility-scale battery plant · powder coat → modules → pack line → yard</p></div></div>
@@ -38,13 +38,19 @@ export class Hud {
     });
     this.$('pause').onclick = () => onPause();
 
-    const rail = h('nav', 'panel rail', '<h3>Camera</h3>');
+    const rail = h('nav', 'panel rail');
+    let group = null;
     Object.entries(VIEWS).forEach(([k, v], i) => {
+      if (v.group !== group) { group = v.group; rail.append(h('h3', '', group)); }
       const b = h('button', 'btn', v.label);
-      b.title = `${v.label} (${i + 1})`;
+      b.title = i < 10 ? `${v.label} (${(i + 1) % 10})` : v.label;
       b.onclick = () => onView(k);
       rail.append(b);
     });
+    const fol = h('button', 'btn follow', 'Follow a frame');
+    fol.title = 'Ride along with a frame through the paint shop (F)';
+    fol.onclick = () => this.cb.onFollow?.();
+    rail.append(fol);
     rail.append(h('div', 'sep'));
     const q = h('button', 'btn', 'Quality: high'); q.id = 'quality'; q.onclick = () => onQuality();
     const hide = h('button', 'btn', 'Hide panels'); hide.title = 'Hide panels (H)'; hide.onclick = () => document.body.classList.toggle('clean');
@@ -73,8 +79,20 @@ export class Hud {
     this.toasts = h('div', 'toasts');
     this.toasts.setAttribute('role', 'status');
     document.body.append(this.toasts);
+    this.followEl = h('div', 'panel followchip');
+    this.followEl.hidden = true;
+    document.body.append(this.followEl);
     this.selected = -1;
     this.logSeen = 0;
+  }
+
+  setFollow(text) {
+    this.followEl.hidden = !text;
+    if (!text) return;
+    if (this.followEl.dataset.t === text) return;
+    this.followEl.dataset.t = text;
+    this.followEl.innerHTML = `<span class="dot"></span><span>${text}</span><button class="btn" aria-label="Stop following">Stop</button>`;
+    this.followEl.querySelector('button').onclick = () => this.cb.onStopFollow?.();
   }
 
   setSpeed(v, paused) {
