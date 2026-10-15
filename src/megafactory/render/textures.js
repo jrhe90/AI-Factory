@@ -118,17 +118,6 @@ export function hazard(repeat = [1, 1]) {
   return finish(c, { repeat });
 }
 
-// Column grid label: black plate with white text, as on the plant's white columns
-export function gridLabel(text) {
-  const [c, g] = canvas(128, 128);
-  g.fillStyle = '#15171a'; g.fillRect(0, 0, 128, 128);
-  g.fillStyle = '#fff';
-  g.font = '700 58px "Barlow Condensed", "Arial Narrow", sans-serif';
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(text, 64, 68);
-  return finish(c, { repeat: [1, 1] });
-}
-
 // Sign board: coloured plate, big title, small subtitle
 export function sign(title, sub = '', { bg = '#15171a', fg = '#ffffff', accent = '#e82127', w = 1024, h = 192 } = {}) {
   const [c, g] = canvas(w, h);
@@ -146,26 +135,6 @@ export function sign(title, sub = '', { bg = '#15171a', fg = '#ffffff', accent =
   return finish(c);
 }
 
-// Floor stencil canvas (redrawn live): returns { texture, draw(lines) }
-export function stencil(w = 1024, h = 256) {
-  const [c, g] = canvas(w, h);
-  const tex = finish(c);
-  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  return {
-    texture: tex,
-    draw(title, lines = [], color = 'rgba(30,34,40,0.78)') {
-      g.clearRect(0, 0, w, h);
-      g.fillStyle = color;
-      g.textBaseline = 'top';
-      g.font = `700 ${Math.round(h * 0.34)}px "Barlow Condensed", "Arial Narrow", sans-serif`;
-      g.fillText(title.toUpperCase(), 8, 6);
-      g.font = `500 ${Math.round(h * 0.16)}px "IBM Plex Mono", ui-monospace, monospace`;
-      lines.forEach((l, i) => g.fillText(l, 10, h * 0.46 + i * h * 0.22));
-      tex.needsUpdate = true;
-    },
-  };
-}
-
 // Big painted zone name on the floor
 export function floorWord(text, color = 'rgba(255,255,255,0.9)', w = 2048, h = 256) {
   const [c, g] = canvas(w, h);
@@ -176,4 +145,49 @@ export function floorWord(text, color = 'rgba(255,255,255,0.9)', w = 2048, h = 2
   const tex = finish(c);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   return { texture: tex, aspect: Math.min(w, g.measureText(text.toUpperCase()).width + 20) / h, used: (g.measureText(text.toUpperCase()).width + 20) / w };
+}
+
+// Many floor stencils on one canvas (name, plan and measured cycle per station); the whole atlas is
+// uploaded once with commit(). Returns { texture, slot(i) → { uv, draw(title, lines) }, commit }.
+export function stencilAtlas(cols = 4, rows = 16, sw = 512, sh = 128) {
+  const [c, g] = canvas(cols * sw, rows * sh);
+  const tex = finish(c);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.flipY = true;
+  return {
+    texture: tex,
+    commit() { tex.needsUpdate = true; },
+    slot(i) {
+      const cx = (i % cols) * sw, cy = Math.floor(i / cols) * sh;
+      return {
+        uv: [cx / (cols * sw), 1 - (cy + sh) / (rows * sh), (cx + sw) / (cols * sw), 1 - cy / (rows * sh)],
+        draw(title, lines = [], color = 'rgba(30,34,40,0.78)') {
+          g.clearRect(cx, cy, sw, sh);
+          g.fillStyle = color;
+          g.textBaseline = 'top';
+          g.font = `700 ${Math.round(sh * 0.34)}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+          g.fillText(title.toUpperCase(), cx + 4, cy + 3);
+          g.font = `500 ${Math.round(sh * 0.16)}px "IBM Plex Mono", ui-monospace, monospace`;
+          lines.forEach((l, k) => g.fillText(l, cx + 5, cy + sh * 0.46 + k * sh * 0.22));
+        },
+      };
+    },
+  };
+}
+
+// All column grid labels on one canvas (black plates, white text); returns { texture, uv(i) }
+export function gridAtlas(labels) {
+  const n = labels.length, cols = 8, rows = Math.ceil(n / cols), s = 128;
+  const [c, g] = canvas(cols * s, rows * s);
+  labels.forEach((t, i) => {
+    const x = (i % cols) * s, y = Math.floor(i / cols) * s;
+    g.fillStyle = '#15171a'; g.fillRect(x, y, s, s);
+    g.fillStyle = '#fff';
+    g.font = '700 58px "Barlow Condensed", "Arial Narrow", sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(t, x + s / 2, y + s / 2 + 4);
+  });
+  const tex = finish(c);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return { texture: tex, uv: (i) => { const x = (i % cols) / cols, y = Math.floor(i / cols) / rows; return [x, 1 - y - 1 / rows, x + 1 / cols, 1 - y]; } };
 }

@@ -1,7 +1,10 @@
 // Articulated people built from primitives: powder painters in white coveralls and hoods,
 // line workers in hi-vis, inspectors. Each figure faces +z in its local frame; arms hang along
 // -y from the shoulder pivots, so rotation.x < 0 raises an arm forwards.
+// Figures are plain Object3D skeletons; the shared instancer draws every body part of every
+// figure as one InstancedMesh per (shape, material), so a plant full of people costs a few draws.
 import * as THREE from 'three';
+import { instancer } from './instancer.js';
 
 const geo = {
   thigh: new THREE.BoxGeometry(0.15, 0.46, 0.17).translate(0, -0.23, 0),
@@ -41,12 +44,15 @@ function mats() {
 }
 
 function part(g, m, parent, x = 0, y = 0, z = 0) {
-  const o = new THREE.Mesh(g, m);
+  const o = new THREE.Object3D();
   o.position.set(x, y, z);
-  o.castShadow = true;
+  o.userData.part = [g, m];
   parent.add(o);
   return o;
 }
+
+// figures are drawn by the shared instancer
+export const crowd = { add(p) { instancer.adopt(p.root); } };
 
 // kind: 'painter' | 'worker' | 'inspector'
 export function createPerson(kind = 'worker') {
@@ -104,6 +110,7 @@ export function createPerson(kind = 'worker') {
     t.rotation.x = 0.3;
   }
   rest(p);
+  crowd.add(p);
   return p;
 }
 

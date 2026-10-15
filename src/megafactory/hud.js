@@ -1,6 +1,6 @@
 // Heads-up display: top bar, camera rail, status legend, KPI strip, station card, tooltips and toasts.
 import { NODES, LINES } from './plant.js';
-import { kpis, status, utilisation } from './sim.js';
+import { kpis, status, utilisation, bottleneck } from './sim.js';
 import { STATUS } from './render/materials.js';
 import { VIEWS } from './render/stage.js';
 
@@ -18,8 +18,9 @@ const h = (tag, cls, html = '') => { const e = document.createElement(tag); if (
 const fmt = (v, d = 0) => v == null || !isFinite(v) ? '–' : v.toFixed(d);
 
 export class Hud {
-  constructor({ onSpeed, onPause, onView, onQuality, onClose, onFollow, onStopFollow }) {
-    this.cb = { onSpeed, onPause, onView, onQuality, onClose, onFollow, onStopFollow };
+  constructor(cb) {
+    this.cb = cb;
+    const { onSpeed, onPause, onView, onQuality } = cb;
     const top = h('header', 'panel top', `
       <div class="brand"><div class="mark" aria-hidden="true"></div>
         <div><h1>MEGAFACTORY</h1><p>Utility-scale battery plant · powder coat → modules → pack line → yard</p></div></div>
@@ -47,14 +48,21 @@ export class Hud {
       b.onclick = () => onView(k);
       rail.append(b);
     });
+    rail.append(h('h3', '', 'Ride along'));
     const fol = h('button', 'btn follow', 'Follow a frame');
     fol.title = 'Ride along with a frame through the paint shop (F)';
-    fol.onclick = () => this.cb.onFollow?.();
-    rail.append(fol);
+    fol.onclick = () => this.cb.onFollow?.('frame');
+    const folp = h('button', 'btn follow', 'Follow a pack');
+    folp.title = 'Ride along with a pack from Chassis Load to the truck (G)';
+    folp.onclick = () => this.cb.onFollow?.('pack');
+    rail.append(fol, folp);
     rail.append(h('div', 'sep'));
+    const st = h('button', 'btn', 'Stations'); st.id = 'stationsBtn'; st.title = 'Station list by line (L)'; st.onclick = () => this.toggleStations();
+    const faults = h('label', 'toggle', '<input type="checkbox" id="faults" checked> Random faults');
+    faults.querySelector('input').onchange = (e) => this.cb.onFaults?.(e.target.checked);
     const q = h('button', 'btn', 'Quality: high'); q.id = 'quality'; q.onclick = () => onQuality();
     const hide = h('button', 'btn', 'Hide panels'); hide.title = 'Hide panels (H)'; hide.onclick = () => document.body.classList.toggle('clean');
-    rail.append(q, hide);
+    rail.append(st, faults, q, hide);
     document.body.append(rail);
 
     const legend = h('div', 'legend', Object.values(STATUS).map(s => `<span><i style="color:${s.color};background:${s.color}"></i>${s.label}</span>`).join(''));
@@ -62,13 +70,14 @@ export class Hud {
 
     this.kpiEl = h('section', 'panel kpis', `
       <div class="kpi hero"><div class="v" id="k-built">0</div><div class="l" id="k-built-l">Megapacks built</div></div>
+      <div class="kpi"><div class="v" id="k-ship">0</div><div class="l"><span id="k-mwh">0</span> MWh shipped</div></div>
       <div class="kpi"><div class="v"><span id="k-takt">–</span><small>min</small></div><div class="l">Takt (target 68)</div></div>
       <div class="kpi"><div class="v"><span id="k-gwh">–</span><small>GWh/yr</small></div><div class="l">Run-rate</div></div>
-      <div class="kpi"><div class="v" id="k-wip">0</div><div class="l">Paint carriers in use</div><div class="bar"><i id="b-wip"></i></div></div>
-      <div class="kpi"><div class="v"><span id="k-fpy">–</span><small>%</small></div><div class="l">Paint first-pass yield</div></div>
-      <div class="kpi"><div class="v"><span id="k-eol">–</span><small>%</small></div><div class="l">End-of-line first pass</div></div>
+      <div class="kpi wide"><div class="v small" id="k-bn">–</div><div class="l">Bottleneck · <span id="k-bnp">–</span> working</div></div>
+      <div class="kpi"><div class="v"><span id="k-fpy">–</span><small>/ <span id="k-eol">–</span>%</small></div><div class="l">First pass: paint / EOL</div></div>
+      <div class="kpi"><div class="v" id="k-frames">0</div><div class="l">Coated frames waiting</div></div>
       <div class="kpi"><div class="v" id="k-rack">0</div><div class="l">Module trays in racks</div><div class="bar"><i id="b-rack"></i></div></div>
-      <div class="kpi"><div class="v" id="k-lot">0</div><div class="l">Packs in lot · <span id="k-ship">0</span> shipped</div><div class="bar"><i id="b-lot"></i></div></div>`);
+      <div class="kpi"><div class="v" id="k-lot">0</div><div class="l">In lot · <span id="k-trucks">0</span> trucks waiting</div><div class="bar"><i id="b-lot"></i></div></div>`);
     document.body.append(this.kpiEl);
 
     this.card = h('aside', 'panel card');
@@ -79,6 +88,10 @@ export class Hud {
     this.toasts = h('div', 'toasts');
     this.toasts.setAttribute('role', 'status');
     document.body.append(this.toasts);
+    this.stations = h('aside', 'panel stations');
+    this.stations.hidden = true;
+    this.lineTab = 'pack';
+    document.body.append(this.stations);
     this.followEl = h('div', 'panel followchip');
     this.followEl.hidden = true;
     document.body.append(this.followEl);
@@ -113,8 +126,12 @@ export class Hud {
     this.$('k-built-l').textContent = `Built since ${since.day.split(' ·')[0]} ${since.time}`;
     this.$('k-takt').textContent = fmt(k.takt);
     this.$('k-gwh').textContent = fmt(k.gwhYear, 1);
-    this.$('k-wip').innerHTML = `${k.paintWip}<small>/ ${s.p.carriers}</small>`;
-    this.$('b-wip').style.width = `${(k.paintWip / s.p.carriers) * 100}%`;
+    this.$('k-mwh').textContent = fmt(k.mwhShipped, 0);
+    const bn = bottleneck(s);
+    this.$('k-bn').textContent = bn ? NODES[bn.n].label : '–';
+    this.$('k-bnp').textContent = bn ? `${Math.round(bn.share * 100)}%` : '–';
+    this.$('k-frames').textContent = k.coatedFrames;
+    this.$('k-trucks').textContent = k.trucksWaiting;
     this.$('k-fpy').textContent = fmt(k.paintFpy * 100, 1);
     this.$('k-eol').textContent = fmt(k.eolFpy * 100, 1);
     this.$('k-rack').innerHTML = `${k.rack}<small>/ 56</small>`;
@@ -125,6 +142,8 @@ export class Hud {
     this.$('b-lot').className = k.lot > 52 ? 'warn' : '';
     this.$('k-ship').textContent = k.shipped;
     if (this.selected >= 0) this.renderCard(s, this.selected);
+    if (!this.stations.hidden) this.renderStations(s);
+    this.sim = s;
     // toasts for breakdowns, repairs and paint rejects
     const fresh = s.log.filter(e => e.t > this.logSeen);
     if (fresh.length) this.logSeen = fresh[fresh.length - 1].t;
@@ -137,39 +156,99 @@ export class Hud {
     }
   }
 
+  toggleStations(force) {
+    this.stations.hidden = force != null ? !force : !this.stations.hidden;
+    this.$('stationsBtn').classList.toggle('on', !this.stations.hidden);
+    if (!this.stations.hidden && this.sim) this.renderStations(this.sim);
+  }
+
+  // station list for one line: status dot, name, time split bar; click opens the station card.
+  // Rows are built when the tab changes and only their values are updated afterwards, so clicks
+  // always land on a live element.
+  renderStations(s) {
+    if (this.builtTab !== this.lineTab) {
+      this.builtTab = this.lineTab;
+      const tabs = Object.entries(LINES).map(([k, l]) => `<button class="tab ${k === this.lineTab ? 'on' : ''}" data-line="${k}" role="tab" aria-selected="${k === this.lineTab}">${l.name}</button>`).join('');
+      this.rows = NODES.map((d, n) => ({ d, n })).filter(({ d }) => d.line === this.lineTab && (d.kind === 'station' || d.kind === 'conveyor' || d.kind === 'truck'));
+      this.stations.innerHTML = `<div class="tabs" role="tablist">${tabs}</div>
+        <div class="srows">${this.rows.map(({ d, n }) => `<button class="srow" data-n="${n}"><i class="dot"></i>
+          <span class="sname">${d.label}</span><span class="spct"></span>
+          <span class="sbar">${['busy', 'blocked', 'starved', 'down'].map(k => `<i style="background:${STATUS[k].color}"></i>`).join('')}</span></button>`).join('')}</div>
+        <div class="sfoot"></div>`;
+      this.stations.querySelectorAll('.tab').forEach(b => b.onclick = () => { this.lineTab = b.dataset.line; this.renderStations(this.sim || s); });
+      this.stations.querySelectorAll('.srow').forEach(b => b.onclick = () => this.cb.onSelect?.(Number(b.dataset.n)));
+    }
+    this.stations.querySelectorAll('.tab').forEach((t) => {
+      t.classList.toggle('fault', NODES.some((d, n) => d.line === t.dataset.line && s.nodes[n].down));
+    });
+    this.stations.querySelectorAll('.srow').forEach((row) => {
+      const n = Number(row.dataset.n), st = STATUS[status(s, n)], u = utilisation(s, n);
+      const dot = row.querySelector('.dot');
+      dot.style.background = dot.style.color = st.color;
+      row.querySelector('.spct').textContent = `${Math.round(u.busy * 100)}%`;
+      row.querySelectorAll('.sbar i').forEach((bar, k) => { bar.style.width = `${u[['busy', 'blocked', 'starved', 'down'][k]] * 100}%`; });
+      row.title = `${NODES[n].label} · ${st.label}`;
+    });
+    const last = this.rows[this.rows.length - 1];
+    this.stations.querySelector('.sfoot').textContent = last ? `${s.nodes[last.n].done} through ${last.d.label} since start` : '';
+  }
+
   select(s, n) {
     this.selected = n;
+    this.cardFor = null;
     this.card.hidden = n < 0;
+    document.body.classList.toggle('card-open', n >= 0);
     if (n >= 0) this.renderCard(s, n);
   }
 
+  // station card: built once per selection, values refreshed in place
   renderCard(s, n) {
     const d = NODES[n], nd = s.nodes[n], st = status(s, n), u = utilisation(s, n);
-    const S = STATUS[st];
-    const unit = nd.items[0];
-    let prog = '';
-    if (unit && d.kind !== 'conveyor' && unit.ready > s.t) {
-      const p = Math.max(0, Math.min(1, (s.t - unit.pStart) / (unit.ready - unit.pStart)));
-      prog = `<div class="row"><span>Working on</span><b>${unit.name}</b></div><div class="prog"><i style="width:${p * 100}%"></i></div>`;
-    } else if (d.kind === 'conveyor') {
-      prog = `<div class="row"><span>On the section</span><b>${nd.items.length} / ${d.cap}</b></div>`;
+    const q = (sel) => this.card.querySelector(sel);
+    if (this.cardFor !== n) {
+      this.cardFor = n;
+      const plan = d.kind === 'conveyor' ? `${fmt(d.L / d.v)} min dwell · ${d.v} m/min` : `${d.time} min · ${d.mode}`;
+      const canFault = d.kind === 'station' || d.fail;
+      this.card.innerHTML = `
+        <button class="btn icon x" aria-label="Close">✕</button>
+        <h2>${d.label}</h2>
+        <div class="line">${LINES[d.line]?.name ?? ''}${d.sub ? ' · ' + d.sub : ''}</div>
+        <span class="pill"><i></i><span class="pl"></span></span>
+        <div class="row unit"><span class="ul">Working on</span><b class="uv"></b></div><div class="prog"><i></i></div>
+        <div class="row"><span>Plan</span><b>${plan}</b></div>
+        ${d.kind !== 'conveyor' ? '<div class="row"><span>Measured</span><b class="meas"></b></div>' : ''}
+        <div class="row"><span>Completed since start</span><b class="done"></b></div>
+        <div class="row"><span>Breakdowns</span><b class="fails"></b></div>
+        <div class="stack" aria-label="Time split">${['busy', 'blocked', 'starved', 'down'].map(k => `<i style="background:${STATUS[k].color}"></i>`).join('')}</div>
+        <div class="stackkey">${['busy', 'blocked', 'starved', 'down'].map(k => `<span>${STATUS[k].label} <b data-k="${k}"></b></span>`).join('')}</div>
+        ${canFault ? '<button class="btn danger fault">Inject fault</button>' : ''}`;
+      q('.x').onclick = () => this.cb.onClose();
+      const fb = q('.fault');
+      if (fb) fb.onclick = () => ((this.sim || s).nodes[n].down ? this.cb.onClear : this.cb.onFault)?.(n);
     }
-    const plan = d.kind === 'conveyor' ? `${fmt(d.L / d.v)} min dwell · ${d.v} m/min` : `${d.time} min · ${d.mode}`;
-    const actual = nd.done ? (nd.st.busy + nd.st.blocked * 0) / nd.done : null;
-    const pct = (v) => `${Math.round(v * 100)}%`;
-    this.card.innerHTML = `
-      <button class="btn icon x" aria-label="Close">✕</button>
-      <h2>${d.label}</h2>
-      <div class="line">${LINES[d.line]?.name ?? ''}${d.sub ? ' · ' + d.sub : ''}</div>
-      <span class="pill" style="color:${S.color}"><i></i>${S.label}</span>
-      ${prog}
-      <div class="row"><span>Plan</span><b>${plan}</b></div>
-      ${d.kind !== 'conveyor' ? `<div class="row"><span>Measured</span><b>${fmt(actual, 1)} min / unit</b></div>` : ''}
-      <div class="row"><span>Completed since start</span><b>${nd.done}</b></div>
-      <div class="row"><span>Breakdowns</span><b>${nd.fails}${nd.down ? ` · back at ${clock(nd.downUntil).time}` : ''}</b></div>
-      <div class="stack" aria-label="Time split">${['busy', 'blocked', 'starved', 'down'].map(k => `<i style="width:${u[k] * 100}%;background:${STATUS[k].color}"></i>`).join('')}</div>
-      <div class="stackkey">${['busy', 'blocked', 'starved', 'down'].map(k => `<span>${STATUS[k].label} <b>${pct(u[k])}</b></span>`).join('')}</div>`;
-    this.card.querySelector('.x').onclick = () => this.cb.onClose();
+    const S = STATUS[st];
+    q('.pill').style.color = S.color;
+    q('.pl').textContent = S.label;
+    const unit = nd.items[0];
+    if (d.kind === 'conveyor') {
+      q('.ul').textContent = 'On the section';
+      q('.uv').textContent = `${nd.items.length} / ${d.cap}`;
+      q('.prog').hidden = true;
+    } else {
+      const working = unit && unit.ready > s.t;
+      q('.ul').textContent = working ? 'Working on' : unit ? 'Holding' : 'Waiting for work';
+      q('.uv').textContent = unit ? unit.name : '–';
+      q('.prog').hidden = !working;
+      if (working) q('.prog i').style.width = `${Math.max(0, Math.min(1, (s.t - unit.pStart) / (unit.ready - unit.pStart))) * 100}%`;
+    }
+    const meas = q('.meas');
+    if (meas) meas.textContent = `${fmt(nd.done ? nd.st.busy / nd.done : null, 1)} min / unit`;
+    q('.done').textContent = nd.done;
+    q('.fails').textContent = `${nd.fails}${nd.down ? ` · back at ${clock(nd.downUntil).time}` : ''}`;
+    this.card.querySelectorAll('.stack i').forEach((bar, k) => { bar.style.width = `${u[['busy', 'blocked', 'starved', 'down'][k]] * 100}%`; });
+    this.card.querySelectorAll('.stackkey b').forEach((b) => { b.textContent = `${Math.round(u[b.dataset.k] * 100)}%`; });
+    const fb = q('.fault');
+    if (fb) { fb.textContent = nd.down ? 'Clear fault' : 'Inject fault'; fb.classList.toggle('clear', nd.down); }
   }
 
   showTip(x, y, s, n) {

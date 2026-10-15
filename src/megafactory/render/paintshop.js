@@ -9,6 +9,7 @@ import { materials } from './materials.js';
 import { Particles } from './particles.js';
 import { createPerson, rest, poseSpray, poseReach, poseInspect, poseSand } from './people.js';
 import { lamp, addPick, floorStencil } from './equipment.js';
+import { instancer } from './instancer.js';
 import { NODES, N, RAIL_Y, HANG_Y, BUILDING, pointAt, pathLength } from '../plant.js';
 import { paintWip } from '../sim.js';
 import { PACK } from '../../models.js';
@@ -41,6 +42,13 @@ const WASH_STAGES = ['1 · Alkaline clean 55 °C', '2 · Rinse', '3 · Zirconium
 const OVEN_TEMP = { DRY: 120, GEL: 180, CURE: 200 };
 const POWDER = { primer: [0.52, 0.6, 0.54], topcoat: [1, 1, 1] };
 const rand = (a, b) => a + Math.random() * (b - a);
+// shared shapes for repeated moving parts, so the instancer draws each kind once
+const GEO = {
+  carBody: new THREE.BoxGeometry(0.5, 0.36, 0.3), gunBar: new THREE.BoxGeometry(0.08, 1.5, 0.08),
+  gun: new THREE.CylinderGeometry(0.045, 0.06, 0.55, 10), nozzle: new THREE.ConeGeometry(0.06, 0.12, 10),
+  trolley: new THREE.BoxGeometry(1.5, 0.34, 0.5), hook: new THREE.BoxGeometry(0.06, 0.9, 0.06), hanger: new THREE.BoxGeometry(0.05, 0.4, 0.05),
+  fan: new THREE.BoxGeometry(1.7, 0.04, 0.22), ovenFan: new THREE.BoxGeometry(1.3, 0.04, 0.2), flame: new THREE.BoxGeometry(0.5, 0.3, 0.05),
+};
 
 export function buildPaintShop(stage, eq) {
   const M = materials();
@@ -86,9 +94,9 @@ export function buildPaintShop(stage, eq) {
     if (style === 'booth') booth(S, T, G, M, ps, L, key, x0, x1, z, st, scene);
     if (style === 'cool') for (let xx = x0 + 3; xx < x1 - 1; xx += 4) {
       S.cyl(M.panelDark, 0.95, 0.5, xx, st.h, z, 18);
-      const fan = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, 0.22), M.steel);
+      const fan = new THREE.Mesh(GEO.fan, M.steel);
       const fan2 = fan.clone(); fan2.rotation.y = Math.PI / 2; fan.add(fan2);
-      fan.position.set(xx, st.h + 0.56, z); root.add(fan); ps.coolFans.push(fan);
+      fan.position.set(xx, st.h + 0.56, z); root.add(fan); instancer.adopt(fan); ps.coolFans.push(fan);
       S.cyl(M.meshGuard, 0.98, 0.04, xx, st.h + 0.62, z, 18);
     }
     L(d.label.toUpperCase(), (x0 + x1) / 2, st.h + 2.4, z, style === 'oven' ? 'eq hot' : 'eq', 235);
@@ -116,13 +124,14 @@ export function buildPaintShop(stage, eq) {
   const cm = { trolley: M.conveyorBlue, bar: M.steel };
   ps.makeEmpty = () => {
     const g = new THREE.Group();
-    const tr = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.34, 0.5), cm.trolley); tr.position.y = 0.1;
-    const hook = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.06), M.darkSteel); hook.position.y = -0.45;
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(PACK.L * 0.86, 0.16, 0.3), cm.bar); bar.position.y = -0.9;
-    for (const x of [-3.2, 3.2]) { const hk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), M.darkSteel); hk.position.set(x, -1.18, 0); g.add(hk); }
+    GEO.bar ??= new THREE.BoxGeometry(PACK.L * 0.86, 0.16, 0.3);
+    const tr = new THREE.Mesh(GEO.trolley, cm.trolley); tr.position.y = 0.1;
+    const hook = new THREE.Mesh(GEO.hook, M.darkSteel); hook.position.y = -0.45;
+    const bar = new THREE.Mesh(GEO.bar, cm.bar); bar.position.y = -0.9;
+    for (const x of [-3.2, 3.2]) { const hk = new THREE.Mesh(GEO.hanger, M.darkSteel); hk.position.set(x, -1.18, 0); g.add(hk); }
     g.add(tr, hook, bar);
-    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     root.add(g);
+    instancer.adopt(g);
     return { g, d: 0 };
   };
 
@@ -199,13 +208,13 @@ function oven(S, G, M, ps, L, key, x0, x1, z, st, root) {
     S.rod(M.steel, [xx - 0.6, h + 1.6, z - 1], [xx - 0.6, h + 5.4, z - 1], 0.36, 14);
     o.stacks.push([xx - 0.6, h + 5.5, z - 1]);
     // burner sight glass and flame
-    const fl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.05), ps.flame);
-    fl.position.set(xx - 0.4, h + 0.9, z + 0.72); root.add(fl);
+    const fl = new THREE.Mesh(GEO.flame, ps.flame);
+    fl.position.set(xx - 0.4, h + 0.9, z + 0.72); root.add(fl); instancer.adopt(fl);
     // recirculation fan on the roof
     S.cyl(M.panelDark, 0.75, 0.5, xx + 4.5, h, z + 0.6, 16);
-    const fan = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.04, 0.2), M.steel);
+    const fan = new THREE.Mesh(GEO.ovenFan, M.steel);
     const f2 = fan.clone(); f2.rotation.y = Math.PI / 2; fan.add(f2);
-    fan.position.set(xx + 4.5, h + 0.56, z + 0.6); root.add(fan); o.fans.push(fan);
+    fan.position.set(xx + 4.5, h + 0.56, z + 0.6); root.add(fan); instancer.adopt(fan); o.fans.push(fan);
   }
   S.beam(M.insulated, [x0 + 1, h + 1.9, z - 1.8], [x1 - 1, h + 1.9, z - 1.8], 0.9, 0.9);
   S.box(M.panelDark, len - 0.4, 0.04, w - 0.6, (x0 + x1) / 2, 0.02, z);
@@ -232,19 +241,19 @@ function booth(S, T, G, M, ps, L, key, x0, x1, z, st, scene) {
     S.box(M.darkSteel, 0.5, 0.3, 0.5, tx, 4.95, tz);
     S.box(M.darkSteel, 0.7, 0.12, 0.7, tx, 0.06, tz);
     const car = new THREE.Group();
-    const cb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.36, 0.3), M.panel); car.add(cb);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.5, 0.08), M.steel); bar.position.z = -s * 0.25; car.add(bar);
+    const cb = new THREE.Mesh(GEO.carBody, M.panel); car.add(cb);
+    const bar = new THREE.Mesh(GEO.gunBar, M.steel); bar.position.z = -s * 0.25; car.add(bar);
     const tips = [];
     for (const gy of [-0.6, -0.2, 0.2, 0.6]) {
-      const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.55, 10), M.darkSteel);
+      const gun = new THREE.Mesh(GEO.gun, M.darkSteel);
       gun.rotation.x = Math.PI / 2; gun.position.set(0, gy, -s * 0.55); car.add(gun);
-      const nz = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 10), M.ss);
+      const nz = new THREE.Mesh(GEO.nozzle, M.ss);
       nz.rotation.x = s > 0 ? -Math.PI / 2 : Math.PI / 2; nz.position.set(0, gy, -s * 0.87); car.add(nz);
       tips.push(gy);
     }
     car.position.set(tx, PART_MID, tz);
-    car.traverse(o => { if (o.isMesh) o.castShadow = true; });
     scene.add(car);
+    instancer.adopt(car);
     b.recips.push({ car, s, x: tx, tips, tipZ: tz - s * 0.93 });
   }
   // gun control cabinet with screens, powder feed centre with hoppers and hoses to the towers
@@ -511,7 +520,7 @@ function updatePaintShop(ps, s, dt, simDt, live, statusOf, stage) {
   // ---- empty carriers on the return: one per carrier not holding a part
   const empties = Math.max(0, s.p.carriers - paintWip(s));
   while (ps.empties.length < empties) { const c = ps.makeEmpty(); c.d = 0; ps.empties.push(c); }
-  while (ps.empties.length > empties) { const c = ps.empties.shift(); ps.root.remove(c.g); }
+  while (ps.empties.length > empties) { const c = ps.empties.shift(); ps.root.remove(c.g); instancer.release(c.g); }
   ps.empties.forEach((c, i) => {
     const target = RETURN_L - 3 - i * 3.2;
     const step = Math.min(Math.abs(target - c.d), dt * 12 + simDt * 18);

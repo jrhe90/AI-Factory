@@ -13,6 +13,9 @@ import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 
 export const VIEWS = {
   overview: { pos: [36, 168, 176], target: [-6, 0, -22], label: 'Overview', group: 'Plant' },
+  pack: { pos: [-20, 30, 52], target: [-28, 1, 6], label: 'Pack line', group: 'Plant' },
+  modules: { pos: [10, 34, 12], target: [8, 1, -24], label: 'Modules', group: 'Plant' },
+  biw: { pos: [-82, 30, 6], target: [-114, 1, -24], label: 'Body in White', group: 'Plant' },
   paint: { pos: [-6, 46, -8], target: [-6, 2, -58], label: 'Powder coat', group: 'Paint shop' },
   pretreat: { pos: [-62, 15, -49], target: [-78, 2.4, -66], label: 'Pretreatment', group: 'Paint shop' },
   primer: { pos: [-12, 13, -50], target: [-22, 2.4, -66], label: 'Primer booth', group: 'Paint shop' },
@@ -20,10 +23,11 @@ export const VIEWS = {
   touchup: { pos: [81, 5.4, -56.5], target: [72, 2.9, -66], label: 'Touch-up', group: 'Paint shop' },
   cure: { pos: [70, 14, -36], target: [58, 3, -50], label: 'Cure oven', group: 'Paint shop' },
   inspection: { pos: [18, 10, -38], target: [8, 2.4, -49], label: 'Inspection', group: 'Paint shop' },
-  pack: { pos: [-20, 30, 52], target: [-28, 1, 6], label: 'Pack line', group: 'Plant' },
-  modules: { pos: [10, 34, 12], target: [8, 1, -24], label: 'Modules', group: 'Plant' },
-  biw: { pos: [-82, 30, 6], target: [-114, 1, -24], label: 'Body in White', group: 'Plant' },
-  yard: { pos: [124, 60, 118], target: [60, 0, 62], label: 'Yard', group: 'Plant' },
+  crane: { pos: [58, 18, 36], target: [36, 3, 12], label: 'Crane & pad', group: 'Outbound' },
+  yard: { pos: [124, 60, 118], target: [60, 0, 62], label: 'Storage lot', group: 'Outbound' },
+  trucks: { pos: [150, 26, 128], target: [100, 1, 100], label: 'Truck bay', group: 'Outbound' },
+  parking: { pos: [-40, 40, -60], target: [-20, 0, -104], label: 'Parking', group: 'Outbound' },
+  site: { pos: [-60, 330, 300], target: [-20, 0, -10], label: 'Whole site', group: 'Outbound' },
 };
 
 export class Stage {
@@ -44,7 +48,7 @@ export class Stage {
 
     const scene = this.scene = new THREE.Scene();
     scene.background = new THREE.Color('#0d1116');
-    scene.fog = new THREE.Fog('#0d1116', 420, 760);
+    scene.fog = new THREE.Fog('#0d1116', 520, 980);
     const pmrem = new THREE.PMREMGenerator(r);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.45;
@@ -61,7 +65,7 @@ export class Stage {
     sun.shadow.normalBias = 0.04;
     scene.add(sun, sun.target);
 
-    this.camera = new THREE.PerspectiveCamera(38, 1, 0.5, 1400);
+    this.camera = new THREE.PerspectiveCamera(38, 1, 0.5, 1800);
     const v = VIEWS.overview;
     this.camera.position.set(...v.pos);
     const c = this.controls = new OrbitControls(this.camera, r.domElement);
@@ -70,7 +74,7 @@ export class Stage {
     c.dampingFactor = 0.08;
     c.maxPolarAngle = Math.PI * 0.48;
     c.minDistance = 4;
-    c.maxDistance = 520;
+    c.maxDistance = 620;
     c.autoRotateSpeed = 0.3;
     this.tween = null;
 

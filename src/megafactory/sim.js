@@ -9,6 +9,8 @@ export const DEFAULTS = {
   cvManual: 0.15,       // lognormal sd / mean for manual work
   cvAuto: 0.03,         // normal sd / mean for automatic work (truncated ±3σ)
   carriers: 14,         // power-and-free carriers in the paint loop
+  carrierPairs: 3,      // straddle-carrier pairs moving packs pad → lot → truck
+  faults: true,         // random breakdowns
   mtbf: 2400, mttr: 45, // station breakdowns (min)
   boothMtbf: 1800, boothMttr: 35,
   paintDefect: 0.05,    // share of carriers rejected at paint inspection
@@ -165,12 +167,15 @@ function canAccept(s, n) {
   if (nd.down) return false;
   switch (d.kind) {
     case 'sink': return true;
-    case 'truck': return nd.items.length === 0 && s.trucks > 0;
+    case 'truck': return nd.items.length === 0 && s.trucks > 0 && carriesUnderway(s) < s.p.carrierPairs;
     case 'station':
       if (nd.items.length) return false;
       if (d.consume && readyCount(s, N[d.consume.from]) < d.consume.n) return false;
       return true;
-    case 'buffer': return nd.items.length < d.cap;
+    case 'buffer':
+      if (nd.items.length >= d.cap) return false;
+      if (n === N.LOT && carriesUnderway(s) >= s.p.carrierPairs) return false;
+      return true;
     case 'conveyor': {
       if (nd.items.length >= d.cap) return false;
       const last = nd.items[nd.items.length - 1];
@@ -183,6 +188,13 @@ function canAccept(s, n) {
     }
   }
   return false;
+}
+
+// packs on their way into the lot or onto a truck each need a straddle-carrier pair
+export function carriesUnderway(s) {
+  let c = 0;
+  for (const n of [N.LOT, N.TRUCK]) for (const it of s.nodes[n].items) if (it.tin + it.mv > s.t + EPS) c++;
+  return c;
 }
 
 // ------------------------------------------------------------------ routing
@@ -234,6 +246,7 @@ function enter(s, n, it) {
       it.ready = it.pStart + dur;
       nd.items.push(it);
       push(s, it.ready, WAKE);
+      if (it.mv > 0) push(s, it.pStart, WAKE);   // the transfer-in finishing can free a resource
       if (d.consume) consume(s, n, it);
     }
   }
@@ -378,7 +391,8 @@ function advance(s, t) {
 
 function handle(s, e) {
   if (e.k === FAIL) {
-    if (!s.nodes[e.n].down) breakDown(s, e.n);
+    if (!s.p.faults) scheduleFail(s, e.n, s.t);
+    else if (!s.nodes[e.n].down) breakDown(s, e.n);
   } else if (e.k === REPAIR) {
     const nd = s.nodes[e.n];
     if (nd.down && nd.downUntil <= s.t + EPS) {
@@ -435,6 +449,43 @@ export function placeItems(s) {
   return out;
 }
 
+// Break a station down now (the "Inject fault" button)
+export function injectFault(s, n) {
+  if (!NODES[n].fail && NODES[n].kind !== 'station') return false;
+  if (s.nodes[n].down) return false;
+  breakDown(s, n);
+  return true;
+}
+
+// Repair a broken station now (the "Clear fault" button): give back the remaining downtime
+export function clearFault(s, n) {
+  const nd = s.nodes[n];
+  if (!nd.down) return false;
+  const left = Math.max(0, nd.downUntil - s.t);
+  if (NODES[n].kind === 'conveyor') nd.items.forEach(it => { if (it.t0 > s.t) it.t0 = Math.max(s.t, it.t0 - left); });
+  else for (const it of nd.items) if (it.ready > s.t) { it.ready = Math.max(s.t, it.ready - left); push(s, it.ready, WAKE); }
+  nd.down = false;
+  nd.downUntil = s.t;
+  scheduleFail(s, n, s.t);
+  if (NODES[n].kind === 'conveyor') wakeHead(s, n);
+  note(s, 'repair', n, `${NODES[n].label} back in service`);
+  flow(s);
+  return true;
+}
+
+// The constraint: the station or section that spent the most time working or down
+export function bottleneck(s) {
+  let best = -1, bv = -1;
+  NODES.forEach((d, n) => {
+    if (d.kind !== 'station' && d.kind !== 'conveyor') return;
+    const st = s.nodes[n].st, tot = st.busy + st.blocked + st.starved + st.down;
+    if (!tot) return;
+    const v = (st.busy + st.down) / tot;
+    if (v > bv) { bv = v; best = n; }
+  });
+  return best < 0 ? null : { n: best, share: bv };
+}
+
 export function kpis(s) {
   const k = s.kpi, hrs = Math.max(1e-6, (s.t - k.t0) / 60);
   const log = k.builtLog;
@@ -451,6 +502,9 @@ export function kpis(s) {
     paintFpy: k.inspected ? 1 - k.rejects / k.inspected : 1,
     eolFpy: k.eolTested ? k.eolFirstPass / k.eolTested : 1,
     recoats: k.recoats,
+    mwhShipped: k.shipped * s.p.mwhPerPack,
+    coatedFrames: s.nodes[N.OUT].items.filter(it => it.type === 'frame').length,
+    trucksWaiting: s.trucks,
   };
 }
 

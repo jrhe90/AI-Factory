@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { Batch } from './batch.js';
 import { materials } from './materials.js';
-import { concrete, macroNoise, gridLabel, floorWord } from './textures.js';
+import { concrete, macroNoise, gridAtlas, floorWord } from './textures.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BUILDING, ZONES, LOT, DOOR_X } from '../plant.js';
 
 const B = BUILDING;
@@ -30,8 +31,6 @@ export function buildBuilding(stage) {
   const W = B.x1 - B.x0, D = B.z1 - B.z0, cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
 
   // ---------------- ground and outdoor court
-  const ground = flat(root, 1600, 1600, 0, 0, new THREE.MeshStandardMaterial({ color: '#2b2f2a', roughness: 1 }), -0.05);
-  ground.receiveShadow = true;
   const court = new THREE.MeshStandardMaterial({ map: concrete([12, 7], 150), roughness: 0.92 });
   flat(root, 150, 82, 50, 26 + 41, court, -0.02);
   const apron = new THREE.MeshStandardMaterial({ map: concrete([16, 1], 140), roughness: 0.95 });
@@ -103,21 +102,28 @@ export function buildBuilding(stage) {
   const southSegs = [[B.x0, DOOR_X - 7], [DOOR_X + 7, B.x1]];
   for (const [a, b] of southSegs) S.box(M.wall, b - a, 1.2, 0.3, (a + b) / 2, 0.6, B.z1);
   // perimeter columns every 12 m and the interior grid
+  const gridLabels = [];
   const colAt = (x, z, label) => {
     S.box(M.column, 0.6, H, 0.6, x, H / 2, z);
     S.box(M.column, 1.0, 0.25, 1.0, x, 0.125, z);
-    if (label) {
-      const m = new THREE.MeshBasicMaterial({ map: gridLabel(label) });
-      for (const [dx, dz, ry] of [[0, 0.31, 0], [0, -0.31, Math.PI], [0.31, 0, Math.PI / 2], [-0.31, 0, -Math.PI / 2]]) {
-        const p = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), m);
-        p.position.set(x + dx, 3.2, z + dz); p.rotation.y = ry;
-        root.add(p);
-      }
-    }
+    if (label) gridLabels.push({ label, x, z });
   };
   for (let x = B.x0; x <= B.x1 + 0.1; x += 12) { colAt(x, B.z0); colAt(x, B.z1); }
   for (let z = B.z0 + 12; z < B.z1; z += 12) { colAt(B.x0, z); colAt(B.x1, z); }
   COLS_X.forEach((x, i) => COLS_Z.forEach((z, j) => colAt(x, z, GRID_LETTERS[i] + (j * 6 + 7))));
+  // column grid labels: one atlas, one mesh
+  const ga = gridAtlas(gridLabels.map(g => g.label));
+  const plates = [];
+  gridLabels.forEach(({ x, z }, i) => {
+    const [u0, v0, u1, v1] = ga.uv(i);
+    for (const [dx, dz, ry] of [[0, 0.31, 0], [0, -0.31, Math.PI], [0.31, 0, Math.PI / 2], [-0.31, 0, -Math.PI / 2]]) {
+      const g = new THREE.PlaneGeometry(0.5, 0.5).rotateY(ry).translate(x + dx, 3.2, z + dz);
+      const uv = g.attributes.uv;
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) ? u1 : u0, uv.getY(k) ? v1 : v0);
+      plates.push(g);
+    }
+  });
+  root.add(new THREE.Mesh(mergeGeometries(plates), new THREE.MeshBasicMaterial({ map: ga.texture })));
   // clerestory band along the north wall
   S.box(M.polyRoof, W, 1.8, 0.05, cx, H - 2.2, B.z0 + 0.2);
   S.build(root);

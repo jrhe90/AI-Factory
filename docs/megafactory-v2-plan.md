@@ -38,7 +38,11 @@ shimmer, wash spray and mist, and HUD panels that cover less of the scene.
 - **Phase 2: done.** Detailed powder coat shop: finish shader with gun-line coverage, booths with
   reciprocators and powder wrap, wash tunnel, ovens, touch-up painters, inspection readout, empty
   carrier return, paint-shop cameras and follow mode.
-- Phase 3: next.
+- **Phase 3: done.** BIW, modules, pack line, crane, straddle carriers, lot, trucks, AGVs and the site
+  rebuilt; fault inject/clear, station list, bottleneck and energy KPIs. `megafactory.html` now runs the
+  new build (`megafactory-v2.html` redirects) and the old `src/main.js`, `src/site.js` and `src/style.css`
+  are removed.
+- Phase 4: next.
 
 ## Phases
 
