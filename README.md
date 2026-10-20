@@ -246,8 +246,9 @@ objects in `src/battery/models.js` (the same objects are in the Sim Factory libr
 - **Pack line** (one pack pallet per pack, ~5 min cycle, 12 modules per pack): housing loading →
   thermal paste → module install → module bolting → HV / LV wiring & BMS → lid → leak test →
   pack EOL test → pack unloading. Manual stations work under yellow gantry frames with hoists.
-- **Outbound yard**: a straddle carrier picks wrapped units off the pad and carries them high enough
-  to pass over the units already parked in the rows (unit bottom 0.35 m above a parked unit's top).
+- **Outbound yard**: a straddle carrier picks Megapack 2 XL units off the pad and carries them high
+  enough to pass over the units already parked in the rows (0.35 m clearance). The units are the
+  captured model in `models/captured/megapack-2xl`, merged into one mesh per material and cloned.
 
 The product changes as it moves: loose cells → compressed stack → welded module → busbars → CCS,
 then empty housing → paste → modules → wiring → lid. The side panel shows each station's state

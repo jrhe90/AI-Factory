@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { createPerson, posePerson } from '../motors/models.js';
 import {
-  BATTERY, PACK, createLineSection, createBatteryRack, createStraddleCarrier, createWrappedUnit, CARRIER,
+  BATTERY, PACK, createLineSection, createBatteryRack, createStraddleCarrier, createMegapackUnit, loadMegapack, CARRIER,
 } from './models.js';
 
 const Y = 0.9; // pallet height
@@ -39,7 +39,8 @@ const PACK_PITCH = 4.6;
 const MOD_Z = 6.5;
 const PACK_Z = -4;
 
-export function startBatteryLine(container, { onTick } = {}) {
+export async function startBatteryLine(container, { onTick } = {}) {
+  await loadMegapack();
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -65,9 +66,9 @@ export function startBatteryLine(container, { onTick } = {}) {
   scene.add(sun);
 
   // Floor plate like the reference render, with walkway markings
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(110, 46), new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.85 }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(124, 46), new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.85 }));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(-8, 0, 1);
+  floor.position.set(-14, 0, 1);
   floor.receiveShadow = true;
   scene.add(floor);
   const stripe = (x0, x1, z, color = 0xf2c230) => {
@@ -144,22 +145,23 @@ export function startBatteryLine(container, { onTick } = {}) {
   scene.add(outConv);
 
   // ---------------------------------------------------------------- outbound yard
-  const yard = { rows: [], pad: new THREE.Vector3(packX0 - (PACK_LINE.length - 1) * PACK_PITCH - 6.5, 0, PACK_Z - 2.4) };
-  const ROW_Z = [-11, -14.4, -17.8];
-  const SLOT_X = [-36, -32, -28, -24];
-  const padUnit = createWrappedUnit();
+  // Megapacks stand in rows lengthwise; the carrier drives along a row over the units already parked
+  const yard = { rows: [], pad: new THREE.Vector3(packX0 - (PACK_LINE.length - 1) * PACK_PITCH - 6.5, 0, PACK_Z - 3.0) };
+  const ROW_Z = [-12, -15.4, -18.8];
+  const SLOT_X = [-58, -48, -38, -28];
+  const padUnit = createMegapackUnit();
   padUnit.position.copy(yard.pad);
   padUnit.visible = false;
   scene.add(padUnit);
   for (const z of ROW_Z) for (const x of SLOT_X) {
-    const u = createWrappedUnit();
+    const u = createMegapackUnit();
     u.position.set(x, 0, z);
     u.visible = Math.random() < 0.5;
     scene.add(u);
     yard.rows.push(u);
   }
-  stripe(-38.5, -21.5, -9.2, 0xffffff);
-  stripe(-38.5, -21.5, -19.6, 0xffffff);
+  stripe(-63, -23, -10.2, 0xffffff);
+  stripe(-63, -23, -20.6, 0xffffff);
   const carrier = createStraddleCarrier();
   carrier.group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   carrier.group.position.set(yard.pad.x, 0, yard.pad.z);
@@ -171,7 +173,7 @@ export function startBatteryLine(container, { onTick } = {}) {
   // Carrier job: drive to pad, lower, grip, lift, drive to a free slot (via the cross aisle), lower, release
   const { travelLift, pickLift, parkedLift } = CARRIER;
   const job = { steps: [], i: 0, t: 0, lift: parkedLift, loaded: false, waiting: true };
-  const AISLE_X = -19.5; // cross aisle, clear of the nearest yard slot
+  const AISLE_X = -19.5; // cross aisle, clear of the nearest yard slot (east end at -23.6)
   function planJob() {
     let slot = yard.rows.findIndex((u) => !u.visible);
     if (slot < 0) {
@@ -307,7 +309,7 @@ export function startBatteryLine(container, { onTick } = {}) {
     overview: { pos: [26, 34, 44], target: [-6, 0, 0] },
     module: { pos: [6, 11, 24], target: [-2, 1, MOD_Z] },
     pack: { pos: [-2, 13, 15], target: [-2, 1, PACK_Z] },
-    yard: { pos: [-12, 15, -2], target: [-30, 2, -14] },
+    yard: { pos: [-16, 17, 2], target: [-40, 2, -14] },
   };
   const fly = { from: null, to: null, t: 1 };
   function setView(name, instant = false) {

@@ -7,6 +7,7 @@
 //   c = { working, status, p, t, simDt, dt, y, blink }
 // The product at each stage (cell, module, pack) is exported too.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   C, mat, glow, box, cyl, mergeColored, machineCommon, enclosure, guardFence, workbench, balancerTool,
   abbRobot, animateRobot,
@@ -936,12 +937,55 @@ export function createBatteryRack(kind = 'cells', bays = 3, levels = 4) {
 // picks the unit up from above, so units can be carried over a row and stacked two high.
 // setLift(h) puts the spreader at h (m); setLoaded(b) shows the unit and lifts it to travel height,
 // high enough to carry it over a unit standing on the ground.
-export const CARRIER = { len: 3.6, half: 1.35, H: 7.2, load: { L: 3.2, W: 1.75, H: 2.5 }, clearance: 0.35 };
+// The load is a Megapack 2 XL (8.84 x 2.83 x 1.69 m), carried lengthwise along the travel direction.
+export const CARRIER = { len: 4.6, half: 1.35, H: 7.8, load: { L: 8.84, W: 1.69, H: 2.83 }, clearance: 0.35 };
 const GRIP = 0.55; // spreader to the top of the unit it holds
 CARRIER.pickLift = CARRIER.load.H + GRIP; // spreader height with the unit on the ground
 CARRIER.travelLift = 2 * CARRIER.load.H + CARRIER.clearance + GRIP; // unit bottom clears a parked unit
 CARRIER.parkedLift = CARRIER.H - 0.9; // empty spreader, clear of everything below
-// Shrink-wrapped battery unit on a steel skid, as the carrier moves it (L along x)
+// Megapack 2 XL from the photo pipeline (models/captured/megapack-2xl), baked once into one mesh
+// per material so a yard full of them stays cheap. Call loadMegapack() before building scenes.
+let megapackProto = null;
+function mergeByMaterial(root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const rel = new THREE.Matrix4();
+  const buckets = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal') g.deleteAttribute(n);
+    if (!g.attributes.normal) g.computeVertexNormals();
+    g.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+    if (!buckets.has(m)) buckets.set(m, []);
+    buckets.get(m).push(g);
+  });
+  const out = new THREE.Group();
+  for (const [m, geos] of buckets) {
+    const mesh = new THREE.Mesh(mergeGeometries(geos), m);
+    mesh.castShadow = mesh.receiveShadow = true;
+    out.add(mesh);
+  }
+  return out;
+}
+export async function loadMegapack() {
+  if (megapackProto) return true;
+  try {
+    const mod = await import('../../models/captured/megapack-2xl/model.js');
+    megapackProto = mergeByMaterial(mod.createMegapack2XLModel({}));
+    return true;
+  } catch (err) {
+    console.warn('Megapack 2 XL model failed to load; using a plain unit instead', err);
+    return false;
+  }
+}
+// A Megapack 2 XL standing on the floor, centred, length along x
+export function createMegapackUnit() {
+  return megapackProto ? megapackProto.clone() : createWrappedUnit();
+}
+
+// Plain stand-in with the same footprint, used until (or if not) the Megapack model loads
 export function createWrappedUnit() {
   const U = CARRIER.load;
   return product('unit', () => {
@@ -1003,7 +1047,7 @@ export function createStraddleCarrier({ color = 0xd3202c } = {}) {
   }
   spreader.add(mergeColored(sp));
   const cargo = new THREE.Group();
-  cargo.add(createWrappedUnit());
+  cargo.add(createMegapackUnit());
   cargo.position.y = -GRIP - U.H;
   spreader.add(cargo);
   g.add(spreader);

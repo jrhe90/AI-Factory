@@ -121,7 +121,8 @@ button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
   }
 }
 </script>
@@ -177,7 +178,7 @@ const list = $('#list');
 const rows = new Map();
 const LABEL = { busy: 'Working', blocked: 'Blocked', idle: 'Starved' };
 
-const api = startBatteryLine($('#stage'), { onTick: render });
+const api = await startBatteryLine($('#stage'), { onTick: render });
 
 function section(title, sts, takt) {
   const h = document.createElement('h3');
