@@ -1156,6 +1156,7 @@ export class Viewport {
       if (v.disc) v.disc.visible = false;
       v.built.update?.({ state: 'idle', dt: 0.016, simDt: 0, t: 0, blink: false, progress: 0 });
       if (v.built.cargo) v.built.cargo.visible = true;
+      v.built.setLoaded?.(true);
     }
     this.store.setState({ sim: { ...this.state.sim, running: false, built: false }, simStats: null });
   }
@@ -1177,6 +1178,7 @@ export class Viewport {
       v.root.position.set(veh.x, 0, veh.z);
       v.root.rotation.y = veh.heading;
       if (v.built.cargo) v.built.cargo.visible = !!veh.load;
+      v.built.setLoaded?.(!!veh.load);
     }
     for (const op of sim.operators) {
       const v = this.views.get(op.id);

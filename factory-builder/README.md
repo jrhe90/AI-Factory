@@ -67,8 +67,10 @@ browser.
 | Workstations | Manual workbench, Assembly bench, Wiring bench, Lift-assist, Inspection bench, Pack & label |
 | Robots | Robot cell, Robot load cell, Robot stack & weld, Robot paint booth, Vision QC arch |
 | Machines | CNC lathe, Machining centre, Stamping press, Hydraulic press, Bar saw, Grinder, Die-casting cell, Parts washer, Cure oven, Run-test stand, CMM, Coil winder, VPI tank, Induction heater, Generic machine |
+| Battery modules | Cell loading & OCV/IR, Plasma cleaning, Cell gluing, Stacking & compression, Side plate laser welding, Busbar / CCS placement, Busbar laser welding, Module EOL test, Module pallet conveyor, Cell tray rack, Module rack |
+| Battery packs | Housing loading, Thermal paste dispensing, Module install (gantry), Module bolting, HV / LV wiring & BMS, Lid installation, Leak test, Pack EOL test, Pack unloading, Pack pallet conveyor |
 | Storage | Pallet rack, **ASRS** (stacker crane), Shelving, Pallet stack, Tank |
-| Vehicles | AGV, Forklift, Tugger |
+| Vehicles | AGV, Forklift, Straddle carrier, Tugger |
 | People | Operator |
 | Site | Safety fence, Kit cart, Table, Building column |
 

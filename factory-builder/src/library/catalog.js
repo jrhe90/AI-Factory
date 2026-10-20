@@ -11,6 +11,7 @@ import {
   MACHINES, createPerson, posePerson, createForklift, createAGV, createTugger, createRack, createShelf,
   createTruck, createPallet, box, mat, cyl, glow,
 } from '../../../src/motors/models.js';
+import { BATTERY, createPalletBuffer, createBatteryRack, createStraddleCarrier } from '../../../src/battery/models.js';
 
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
 const put = (m, x, y, z) => {
@@ -26,11 +27,13 @@ const LIGHT = { busy: 'working', idle: 'idle', blocked: 'blocked', down: 'down',
 const VESTS = [0xf2e21a, 0xff7a1a, 0x9be22e];
 
 // ------------------------------------------------------------------ wrappers
-// A machine from the motor-plant library, with its operators
+// A machine from the motor-plant library (or a factory with the same interface, e.g. BATTERY.*),
+// with its operators
 function machine(kind, opts) {
+  const make = typeof kind === 'function' ? kind : MACHINES[kind];
   return (p) => {
     const y = 0.9;
-    const m = MACHINES[kind](y, opts);
+    const m = make(y, opts);
     const g = new THREE.Group();
     g.add(m.group);
     const bb = new THREE.Box3().setFromObject(m.group);
@@ -188,7 +191,7 @@ function vehicle(make) {
   return () => {
     const o = make();
     const g = o.group ?? o;
-    return { group: g, entry: v(0, 0.6, 0), exit: v(0, 0.6, 0), work: v(0, 0.65, 0), height: 2.6, cargo: o.cargo, carriage: o.carriage };
+    return { group: g, entry: v(0, 0.6, 0), exit: v(0, 0.6, 0), work: v(0, 0.65, 0), height: 2.6, cargo: o.cargo, carriage: o.carriage, setLoaded: o.setLoaded };
   };
 }
 
@@ -202,6 +205,24 @@ function operator(p) {
       person.phase += c.simDt;
       posePerson(person, c.walking ? 'walk' : c.state === 'busy' ? 'work' : 'idle', c.walking ? c.t * 6.5 : person.phase * 3);
     },
+  };
+}
+
+// Pallet-conveyor buffer: tooling pallets queue on a straight section; loads show when occupied
+function palletBuffer(kind) {
+  return (p) => {
+    const b = createPalletBuffer(kind, Math.max(1, Math.min(8, p.capacity ?? 4)));
+    return {
+      group: b.group, entry: v(-b.len / 2, 0.9, 0), exit: v(b.len / 2, 0.9, 0), work: v(0, 0.9, 0), height: 1.2,
+      update(c) { b.loads.forEach((l) => { l.visible = c.state !== 'idle' && c.state !== 'off'; }); },
+    };
+  };
+}
+
+function batteryRack(kind) {
+  return (p) => {
+    const r = createBatteryRack(kind, p.bays ?? 3, p.levels ?? 4);
+    return { group: r.group, entry: v(0, 0.3, 0.8), exit: v(0, 0.3, 0.8), work: v(0, 0.3, 0.7), height: r.H };
   };
 }
 
@@ -268,6 +289,35 @@ export const CATALOG = [
   station('induction-heater', 'Induction heater', 'Machines', 'IND', machine('induction'), 60, 2, 'Induction heating for shrink fits.'),
   station('enclosed-machine', 'Generic machine', 'Machines', 'MCH', generic('processor', { style: 'machine' }), 60, 1, 'Generic enclosed machine for anything not in the library.'),
 
+  // Battery: prismatic module line (one tooling pallet per module)
+  station('cell-loading', 'Cell loading & OCV/IR', 'Battery modules', 'CEL', machine(BATTERY.cellload), 28, 0, 'Robot picks cells from trays, OCV/IR tests and sorts them; NG cells to the reject bin.'),
+  station('plasma-cleaning', 'Plasma cleaning', 'Battery modules', 'PLS', machine(BATTERY.plasma), 26, 0, 'Enclosed atmospheric plasma cleaning of the cell faces.'),
+  station('cell-gluing', 'Cell gluing', 'Battery modules', 'GLU', machine(BATTERY.gluing), 30, 0, 'Portal dispenser with 2K drum pump; adhesive beads between cells.'),
+  station('cell-stacking', 'Stacking & compression', 'Battery modules', 'STK', machine(BATTERY.stacking), 32, 0, 'Robot stacks cells and end plates; servo clamps compress the stack.'),
+  station('side-plate-weld', 'Side plate laser welding', 'Battery modules', 'SPW', machine(BATTERY.sideweld), 30, 0, 'Laser cell welding side plates to end plates, with laser source and chiller.'),
+  station('ccs-placement', 'Busbar / CCS placement', 'Battery modules', 'CCS', machine(BATTERY.ccs), 29, 2, 'Manual placement of the cell contact system and busbars.'),
+  station('busbar-weld', 'Busbar laser welding', 'Battery modules', 'BBW', machine(BATTERY.busweld), 31, 0, 'Galvo laser welds busbars to every terminal, with fume extraction.'),
+  station('module-eol', 'Module EOL test', 'Battery modules', 'MEOL', machine(BATTERY.moduleeol), 24, 0, 'Probe head on the terminals: OCV, IR, hipot and DCR, with test rack.'),
+  { type: 'module-conveyor', label: 'Module pallet conveyor', category: 'Battery modules', glyph: 'MCV', role: 'buffer', build: palletBuffer('module'), desc: 'Chain conveyor buffer with module tooling pallets.',
+    defaults: { capacity: 4 }, fields: [['capacity', 'Capacity (pallets)', 'number', { min: 1, max: 8 }]] },
+  { type: 'cell-rack', label: 'Cell tray rack', category: 'Battery modules', glyph: 'CTR', role: 'storage', build: batteryRack('cells'), desc: 'Racking for incoming cell trays.',
+    defaults: { bays: 3, levels: 4, capacity: 48, handling: 20 }, fields: [['bays', 'Bays', 'number', { min: 1 }], ['levels', 'Levels', 'number', { min: 1 }], ['capacity', 'Capacity (trays)', 'number', { min: 1 }], ['handling', 'Put/pick time (s)', 'number', { min: 0 }]] },
+  { type: 'module-rack', label: 'Module rack', category: 'Battery modules', glyph: 'MRK', role: 'storage', build: batteryRack('modules'), desc: 'Buffer racking for finished modules.',
+    defaults: { bays: 3, levels: 4, capacity: 72, handling: 15 }, fields: [['bays', 'Bays', 'number', { min: 1 }], ['levels', 'Levels', 'number', { min: 1 }], ['capacity', 'Capacity (modules)', 'number', { min: 1 }], ['handling', 'Put/pick time (s)', 'number', { min: 0 }]] },
+
+  // Battery: pack line (one pack pallet per pack, 12 modules per pack)
+  station('housing-load', 'Housing loading', 'Battery packs', 'HSG', machine(BATTERY.housingload), 300, 1, 'Gantry hoist with vacuum lifter places an empty housing on the pallet.'),
+  station('thermal-paste', 'Thermal paste dispensing', 'Battery packs', 'TIM', machine(BATTERY.paste), 300, 0, 'Portal dispenser lays gap filler on the cooling floor.'),
+  station('module-install', 'Module install (gantry)', 'Battery packs', 'MIN', machine(BATTERY.moduleinsert), 330, 2, 'Yellow gantry with module gripper; modules from the module cart.'),
+  station('module-bolting', 'Module bolting', 'Battery packs', 'BLT', machine(BATTERY.boltdown), 310, 1, 'Nutrunner on a torque-reaction arm under a gantry.'),
+  station('pack-wiring', 'HV / LV wiring & BMS', 'Battery packs', 'WIR', machine(BATTERY.wiring), 320, 2, 'Manual fitting of HV busbars, LV harness, BDU and BMS from both sides.'),
+  station('lid-install', 'Lid installation', 'Battery packs', 'LID', machine(BATTERY.lid), 290, 2, 'Gantry vacuum lifter places the lid; operators fasten it.'),
+  station('leak-test', 'Leak test', 'Battery packs', 'LKT', machine(BATTERY.leaktest), 300, 1, 'Clamp portal seals the pack; air/helium decay test.'),
+  station('pack-eol', 'Pack EOL test', 'Battery packs', 'PEOL', machine(BATTERY.packeol), 310, 1, 'HV test cabinets and cable boom: insulation, BMS and charge/discharge.'),
+  station('pack-unload', 'Pack unloading', 'Battery packs', 'UNL', machine(BATTERY.packunload), 280, 1, 'Gantry lifts finished packs onto outbound skids.'),
+  { type: 'pack-conveyor', label: 'Pack pallet conveyor', category: 'Battery packs', glyph: 'PCV', role: 'buffer', build: palletBuffer('pack'), desc: 'Wide chain conveyor buffer with pack pallets.',
+    defaults: { capacity: 3 }, fields: [['capacity', 'Capacity (pallets)', 'number', { min: 1, max: 8 }]] },
+
   // Storage
   { type: 'pallet-rack', label: 'Pallet rack', category: 'Storage', glyph: 'RCK', role: 'storage', build: palletRack, desc: 'Selective pallet racking.',
     defaults: { bays: 4, levels: 3, capacity: 24, handling: 20 }, fields: [['bays', 'Bays', 'number', { min: 1 }], ['levels', 'Levels', 'number', { min: 1 }], ['capacity', 'Capacity (parts)', 'number', { min: 1 }], ['handling', 'Put/pick time (s)', 'number', { min: 0 }]] },
@@ -282,6 +332,8 @@ export const CATALOG = [
   { type: 'agv', label: 'AGV', category: 'Vehicles', glyph: 'AGV', role: 'vehicle', build: vehicle(() => createAGV()), desc: 'Automated guided vehicle. Drives on routes and runs transport links.',
     defaults: { speed: 1.5 }, fields: [['speed', 'Speed (m/s)', 'number', { min: 0.2, step: 0.1 }]] },
   { type: 'forklift', label: 'Forklift', category: 'Vehicles', glyph: 'FLT', role: 'vehicle', build: vehicle(() => createForklift()), desc: 'Counterbalance forklift with driver.',
+    defaults: { speed: 2.5 }, fields: [['speed', 'Speed (m/s)', 'number', { min: 0.2, step: 0.1 }]] },
+  { type: 'straddle-carrier', label: 'Straddle carrier', category: 'Vehicles', glyph: 'STR', role: 'vehicle', build: vehicle(() => createStraddleCarrier()), desc: 'Portal carrier that lifts wrapped battery units from above and stacks them in the yard.',
     defaults: { speed: 2.5 }, fields: [['speed', 'Speed (m/s)', 'number', { min: 0.2, step: 0.1 }]] },
   { type: 'tugger', label: 'Tugger', category: 'Vehicles', glyph: 'TUG', role: 'vehicle', build: vehicle(() => ({ group: createTugger() })), desc: 'Tugger for milk runs.',
     defaults: { speed: 2.0 }, fields: [['speed', 'Speed (m/s)', 'number', { min: 0.2, step: 0.1 }]] },

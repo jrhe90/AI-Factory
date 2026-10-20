@@ -8,6 +8,7 @@ in the browser.
 |------|------------|
 | `index.html` | Demo hub |
 | `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
+| `battery-line.html` | **Prismatic Module & Pack Line**: a running module line → pack line → outbound yard with a straddle carrier, built from the battery objects in the library |
 | `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
 | `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
 | `capture.html` | Phone capture for the photo → 3D model pipeline (needs `node tools/capture-server.mjs`, see [Photo → 3D model](#photo--3d-model-img2threejs)) |
@@ -234,6 +235,28 @@ plant bottleneck, giving a takt of about 68 minutes per pack, the figure quoted 
 video. At ~3.9 MWh per pack that is roughly a 30 GWh/year run-rate before downtime. The feeder lines run a little faster, so they fill
 their buffers and then wait.
 
+## Prismatic battery module & pack line
+
+`battery-line.html` lays out and runs a semi-automatic prismatic battery line from the battery
+objects in `src/battery/models.js` (the same objects are in the Sim Factory library):
+
+- **Module line** (one tooling pallet per module, ~30 s cycle): cell loading & OCV/IR sort →
+  plasma cleaning → cell gluing → stacking & compression → side plate laser welding →
+  busbar / CCS placement (manual) → busbar laser welding → module EOL test.
+- **Pack line** (one pack pallet per pack, ~5 min cycle, 12 modules per pack): housing loading →
+  thermal paste → module install → module bolting → HV / LV wiring & BMS → lid → leak test →
+  pack EOL test → pack unloading. Manual stations work under yellow gantry frames with hoists.
+- **Outbound yard**: a straddle carrier picks wrapped units off the pad and stacks them in rows.
+
+The product changes as it moves: loose cells → compressed stack → welded module → busbars → CCS,
+then empty housing → paste → modules → wiring → lid. The side panel shows each station's state
+(working / blocked / starved) and utilisation, module and pack output, the module buffer and
+the bottleneck. Click a station to fly to it.
+
+In the Sim Factory library the stations are in the **Battery modules** and **Battery packs**
+categories (with pallet-conveyor buffers, cell-tray and module racks), and the straddle carrier is
+under **Vehicles**: its spreader drops to travel height and shows a unit when it carries a load.
+
 ## Line Builder (generic objects, FlexSim-style)
 
 `builder.html` is a separate page for presenting any line without 3D modelling. It has a library of
@@ -333,6 +356,7 @@ photo are approximate: sides the camera didn't see are guessed.
 index.html       demo hub
 motors.html      Electric Motor Plant (AI digital twin)
 megafactory.html Megafactory simulation page
+battery-line.html prismatic battery module & pack line (src/battery/)
 builder.html     Line Builder page (generic objects + layout editor)
 capture.html     phone page for photographing equipment (served by tools/capture-server.mjs)
 assets/          hub preview images
@@ -345,6 +369,8 @@ tools/           capture-server.mjs (LAN upload + static server), register-model
 .claude/skills/  photo-to-model: Claude Code skill that runs img2threejs on a capture
 src/builder/     Line Builder object library, flow engine and editor; captured.js loads captured models
 src/capture/     capture page script and styles
+src/battery/     prismatic battery line: models.js (stations, cell/module/pack at every stage, racks,
+                 straddle carrier), line.js (layout, flow simulation, yard, camera)
 src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
 src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
 src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping

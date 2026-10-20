@@ -817,7 +817,7 @@ function enclosure(g, w, h, d, { color = C.machine, accent = C.abb, y0 = 0, tunn
   return { door, doorX: w * 0.24, doorOpenX: -w * 0.22 };
 }
 
-function machineCommon(g, { lightAt, hmiAt }) {
+export function machineCommon(g, { lightAt, hmiAt }) {
   const light = stackLight(0.5);
   light.group.position.set(...lightAt);
   g.add(light.group);
