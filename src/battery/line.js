@@ -145,10 +145,11 @@ export async function startBatteryLine(container, { onTick } = {}) {
   scene.add(outConv);
 
   // ---------------------------------------------------------------- outbound yard
-  // Megapacks stand in rows lengthwise; the carrier drives along a row over the units already parked
-  const yard = { rows: [], pad: new THREE.Vector3(packX0 - (PACK_LINE.length - 1) * PACK_PITCH - 6.5, 0, PACK_Z - 3.0) };
-  const ROW_Z = [-12, -15.4, -18.8];
-  const SLOT_X = [-58, -48, -38, -28];
+  // Megapacks stand side by side in columns; the carrier (as long as a unit) drives down a column
+  // over the units already parked, its legs passing in the gaps between columns
+  const yard = { rows: [], pad: new THREE.Vector3(packX0 - (PACK_LINE.length - 1) * PACK_PITCH - 8, 0, PACK_Z - 3.0) };
+  const ROW_Z = [-12.8, -16.2, -19.6];
+  const SLOT_X = [-59, -47.5, -36, -24.5];
   const padUnit = createMegapackUnit();
   padUnit.position.copy(yard.pad);
   padUnit.visible = false;
@@ -160,8 +161,12 @@ export async function startBatteryLine(container, { onTick } = {}) {
     scene.add(u);
     yard.rows.push(u);
   }
-  stripe(-63, -23, -10.2, 0xffffff);
-  stripe(-63, -23, -20.6, 0xffffff);
+  for (const x of SLOT_X) for (const dx of [-5.6, 5.6]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x + dx, 0.005, -16.2);
+    scene.add(m);
+  }
   const carrier = createStraddleCarrier();
   carrier.group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   carrier.group.position.set(yard.pad.x, 0, yard.pad.z);
@@ -173,7 +178,7 @@ export async function startBatteryLine(container, { onTick } = {}) {
   // Carrier job: drive to pad, lower, grip, lift, drive to a free slot (via the cross aisle), lower, release
   const { travelLift, pickLift, parkedLift } = CARRIER;
   const job = { steps: [], i: 0, t: 0, lift: parkedLift, loaded: false, waiting: true };
-  const AISLE_X = -19.5; // cross aisle, clear of the nearest yard slot (east end at -23.6)
+  const LANE_Z = -9.6; // cross lane north of the yard; the carrier crabs along it between columns
   function planJob() {
     let slot = yard.rows.findIndex((u) => !u.visible);
     if (slot < 0) {
@@ -183,9 +188,9 @@ export async function startBatteryLine(container, { onTick } = {}) {
     const target = yard.rows[slot].position;
     const p = carrier.group.position;
     job.steps = [
-      { drive: [AISLE_X, p.z] }, { drive: [AISLE_X, yard.pad.z] }, { drive: [yard.pad.x, yard.pad.z] },
+      { drive: [p.x, LANE_Z] }, { drive: [yard.pad.x, LANE_Z] }, { drive: [yard.pad.x, yard.pad.z] },
       { lift: pickLift }, { grip: true }, { lift: travelLift },
-      { drive: [AISLE_X, yard.pad.z] }, { drive: [AISLE_X, target.z] }, { drive: [target.x, target.z] },
+      { drive: [yard.pad.x, LANE_Z] }, { drive: [target.x, LANE_Z] }, { drive: [target.x, target.z] },
       { lift: pickLift }, { release: slot }, { lift: parkedLift },
     ];
     job.i = 0;
@@ -204,7 +209,7 @@ export async function startBatteryLine(container, { onTick } = {}) {
       const dz = s.drive[1] - g.position.z;
       const d = Math.hypot(dx, dz);
       if (d < 0.05) { job.i++; return; }
-      // Straddle carriers crab sideways in the aisle, so keep the frame aligned with the rows
+      // The carrier crabs in both directions, so the frame stays aligned with the units
       const v = Math.min(d, 3.2 * dt);
       g.position.x += (dx / d) * v;
       g.position.z += (dz / d) * v;

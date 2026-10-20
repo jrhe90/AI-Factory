@@ -932,13 +932,14 @@ export function createBatteryRack(kind = 'cells', bays = 3, levels = 4) {
 }
 
 // ------------------------------------------------------------------ yard
-// Straddle carrier for finished battery containers (Megapack-style units in shrink wrap): a red
-// portal frame on four wheels; hoists on the top frame lower a spreader between the legs that
-// picks the unit up from above, so units can be carried over a row and stacked two high.
-// setLift(h) puts the spreader at h (m); setLoaded(b) shows the unit and lifts it to travel height,
-// high enough to carry it over a unit standing on the ground.
-// The load is a Megapack 2 XL (8.84 x 2.83 x 1.69 m), carried lengthwise along the travel direction.
-export const CARRIER = { len: 4.6, half: 1.35, H: 7.8, load: { L: 8.84, W: 1.69, H: 2.83 }, clearance: 0.35 };
+// Straddle carrier for finished Megapacks: a red portal frame as long as the unit, a leg and wheel
+// at each corner and no low cross members, so it can drive over a row of units in either
+// direction. Hoists on the top frame lower a spreader between the legs that picks the unit up from
+// above. setLift(h) puts the spreader at h (m); setLoaded(b) shows the unit and lifts it to travel
+// height, high enough to carry it over a unit standing on the ground.
+// The load is a Megapack 2 XL (8.84 x 2.83 x 1.69 m), its length along the frame (x).
+const UNIT = { L: 8.84, W: 1.69, H: 2.83 };
+export const CARRIER = { len: UNIT.L + 1.2, half: 1.35, H: 7.8, load: UNIT, clearance: 0.35 };
 const GRIP = 0.55; // spreader to the top of the unit it holds
 CARRIER.pickLift = CARRIER.load.H + GRIP; // spreader height with the unit on the ground
 CARRIER.travelLift = 2 * CARRIER.load.H + CARRIER.clearance + GRIP; // unit bottom clears a parked unit
@@ -1006,22 +1007,22 @@ export function createStraddleCarrier({ color = 0xd3202c } = {}) {
   const dark = mat(0x1d1f22, { roughness: 0.6 });
   const legX = len / 2 - 0.2;
   for (const z of [-half, half]) {
-    add(s, box(len + 0.3, 0.45, 0.45, red), 0, 1.0, z); // bogie sill
     add(s, box(len + 0.4, 0.55, 0.42, red), 0, H, z); // top side beam
     for (const x of [-legX, legX]) {
-      add(s, box(0.38, H - 1.2, 0.4, red), x, 1.2 + (H - 1.2) / 2, z);
+      add(s, box(0.38, H - 0.85, 0.4, red), x, 0.85 + (H - 0.85) / 2, z);
       add(s, box(0.12, H - 1.9, 0.08, dark), x + (x > 0 ? -0.2 : 0.2), 1.5 + (H - 1.9) / 2, z - Math.sign(z) * 0.18); // spreader guide
       add(s, cyl(0.45, 0.45, 0.34, 18, dark), x, 0.45, z).rotation.x = Math.PI / 2;
       add(s, cyl(0.2, 0.2, 0.36, 10, mat(0x9aa1a9, { metalness: 0.6 })), x, 0.45, z).rotation.x = Math.PI / 2;
       add(s, box(0.6, 0.3, 0.5, red), x, 0.85, z); // wheel fork
+      add(s, box(0.5, 0.35, 0.5, red), x, H - 0.45, z); // knee bracket
     }
   }
   for (const x of [-legX, legX]) {
     add(s, box(0.45, 0.6, half * 2 + 0.42, red), x, H, 0); // cross beam
     add(s, box(0.02, 0.2, 1.4, mat(0xf2f2f2)), x + Math.sign(x) * 0.235, H, 0); // name board
   }
-  // Hoist drums and power pack on top
-  for (const x of [-0.7, 0.7]) add(s, cyl(0.36, 0.36, 0.14, 20, dark), x, H + 0.35, 0);
+  // Hoist drums near each end and the power pack in the middle
+  for (const x of [-(len / 2 - 1.2), len / 2 - 1.2]) add(s, cyl(0.36, 0.36, 0.14, 20, dark), x, H + 0.35, 0);
   add(s, box(1.0, 0.5, 0.9, mat(0x3a3f45)), 0, H + 0.45, 0.9);
   add(s, box(0.06, 0.06, half * 2, dark), 0, H + 0.32, 0);
   // Cab and ladder on one leg
