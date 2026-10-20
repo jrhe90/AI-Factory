@@ -939,7 +939,7 @@ export function createBatteryRack(kind = 'cells', bays = 3, levels = 4) {
 // height, high enough to carry it over a unit standing on the ground.
 // The load is a Megapack 2 XL (8.84 x 2.83 x 1.69 m), its length along the frame (x).
 const UNIT = { L: 8.84, W: 1.69, H: 2.83 };
-export const CARRIER = { len: UNIT.L + 1.2, half: 1.35, H: 7.8, load: UNIT, clearance: 0.35 };
+export const CARRIER = { len: UNIT.L + 1.2, half: 1.6, H: 7.8, load: UNIT, clearance: 0.35 }; // half: legs clear a truck trailer
 const GRIP = 0.55; // spreader to the top of the unit it holds
 CARRIER.pickLift = CARRIER.load.H + GRIP; // spreader height with the unit on the ground
 CARRIER.travelLift = 2 * CARRIER.load.H + CARRIER.clearance + GRIP; // unit bottom clears a parked unit

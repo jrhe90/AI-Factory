@@ -4,10 +4,15 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   COLORS, PACK, TRUCK_BED, FRAME_H, FRAME_MATS, HANG, TRAY, mat, glow, box, cyl,
   createMegapack, createRoof, createRobot, createTruck, createAGV, createWorker,
-  createFrame, setFrameMaterial, createCarrier, createModuleTray, createLiftAssist, createFinishedPack, createStraddleCarrier,
+  createFrame, setFrameMaterial, createCarrier, createModuleTray, createLiftAssist,
   makeSignTexture, makeWallTexture, makeFloorTexture, makePanelTexture, makeLabelTexture,
 } from './models.js';
+import { createStraddleCarrier, createMegapackUnit, loadMegapack, CARRIER as SC } from './battery/models.js';
+import { mergeColored } from './motors/models.js';
 import { buildSite, SITE } from './site.js';
+
+// Finished packs are the captured Megapack 2 XL model (models/captured); load it before building
+await loadMegapack();
 
 // =====================================================================
 // Plant layout & timing
@@ -20,28 +25,52 @@ import { buildSite, SITE } from './site.js';
 const FACTORY_MIN = 5;
 const TARGET_TAKT = 68; // minutes per pack
 const MWH_PER_UNIT = 3.9;
-const TRAYS_PER_PACK = 4; // 4 trays × 12 modules = 48 modules per pack
 
-// Pack line (front of plant, flows +x)
-const CONV_Y = 0.35; // packs ride low floor rails, not a roller conveyor
-const PICK_X = 57;
-const TRUCK_Z = 16;
-// Battery module line (flows -x, ends at the rack warehouse)
-const MOD_Y = 0.9;
-const MOD_Z = -17;
-// Body in White (back of plant, flows -x) hands frames up to the overhead paint conveyor
+// Plant layout (north is -z, west is -x). The main product flows in an S through the west half,
+// from the north-west to the south-west corner:
+//   Body in White (north band, flows west) → overhead Powder Coat (down the west wall, then east
+//   through the middle band) → General Assembly (south band, flows west) → shipping crane and the
+//   south-west door to the storage lot.
+// The east half holds the feeders: Battery Modules (north) → module racks → Qbert, which stacks
+// modules into battery stacks (middle); the Thermal System line (middle) and Door Assembly
+// (south). AGVs carry stacks, thermal roofs and door sets along the main aisle to GA.
+const CONV_Y = 0.35; // GA packs ride low floor rails, not a roller conveyor
+const GA_Z = 21;
+const GA_START_X = 30; // Chassis Load, under the end of the paint rail
+const PICK_X = -76; // shipping crane, in front of the south-west door
+const PAD_Z = 29.5; // pickup pad between the crane and the south wall
+// Body in White (north-west, flows -x) hands frames up to the overhead paint conveyor
 const BIW_Y = 0.7;
-const BIW_Z = -27;
+const BIW_Z = -24;
+const BIW_START_X = -4;
 const PC_RAIL_Y = 4.5;
-const PC_START_X = 36;
-// The overhead powder-coat conveyor ends right above Chassis Load on the pack line.
+const PC_START_X = -70;
+const PC_Z = -1; // powder-coat stations run east along the middle band
+// The overhead conveyor runs west to the wall, south, east through the paint stations, climbs over
+// the Qbert area and comes down above Chassis Load at the head of GA.
 const PC_POINTS = [
-  [PC_START_X, PC_RAIL_Y, BIW_Z], [-18, PC_RAIL_Y, BIW_Z], [-32, 11, BIW_Z], [-32, 11, -9],
-  [-72, 11, -9], [-72, 7.6, 0], [-56, 5.8, 0],
+  [PC_START_X, PC_RAIL_Y, BIW_Z], [-90, PC_RAIL_Y, BIW_Z], [-90, PC_RAIL_Y, PC_Z], [-14, PC_RAIL_Y, PC_Z],
+  [-4, 11, PC_Z], [40, 11, PC_Z], [40, 11, GA_Z - 6], [40, 8, GA_Z], [GA_START_X, 5.8, GA_Z],
 ];
 const PC_END_Y = 5.8;
 const FRAME_DROP = PC_END_Y - HANG - FRAME_H - CONV_Y - PACK.BASE; // hanger → skid
 const LOAD_LIFT = PC_RAIL_Y - HANG - FRAME_H - BIW_Y; // BIW conveyor → hanger
+// Battery module line (north-east, flows -x into the module racks)
+const MOD_Y = 0.9;
+const MOD_Z = -24;
+// Qbert: module trays → battery stacks (middle band, flows -x)
+const QB_Z = -6;
+// Thermal system (thermal roof) line (middle band east, flows -x)
+const TH_Y = 0.9;
+const TH_Z = -1;
+// Door assembly (south band east, flows -x) on low floor carts
+const DOOR_Y = 0.3;
+const DOOR_Z = 21;
+// Main AGV aisle between the middle band and GA (two lanes)
+const AISLE_N = 10.9;
+const AISLE_S = 12.3;
+const STACKS_PER_PACK = 4; // 4 stacks × 12 modules = 48 modules per pack
+const DOOR_SETS_PER_PACK = 4; // 4 sets × 4 doors = 16 doors per pack
 
 const STATUS_COLOR = { working: COLORS.green, idle: 0x6b7280, blocked: COLORS.amber, down: COLORS.red };
 const ZONE_COLOR = 0x5a626b;
@@ -75,9 +104,9 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 1600);
-camera.position.set(-34, 64, 96);
+camera.position.set(-20, 92, 112);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(6, 0, -8);
+controls.target.set(0, 0, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.maxPolarAngle = Math.PI / 2.05;
@@ -120,7 +149,15 @@ function roundedPath(points, radius) {
 // =====================================================================
 // Shared buffers between lines
 // =====================================================================
-const moduleStock = { count: 30, cap: 56, crates: [] };
+// Each buffer is a count with a capacity; lines and AGVs move units between them.
+const moduleStock = { name: 'Module racks', count: 30, cap: 48, crates: [] }; // module trays
+const qbertIn = { name: 'Qbert infeed', count: 2, cap: 6 }; // trays line-side at Qbert
+const stackStock = { name: 'Stack staging', count: 6, cap: 12 }; // battery stacks out of Qbert
+const gaStacks = { name: 'GA stacks', count: 4, cap: 8 }; // stacks line-side at Stack Install
+const thermalOut = { name: 'Thermal staging', count: 1, cap: 4 }; // finished thermal roofs
+const gaThermal = { name: 'GA thermal', count: 1, cap: 2 }; // roofs line-side at Thermal Install
+const doorOut = { name: 'Door staging', count: 4, cap: 12 }; // door sets (4 doors each)
+const gaDoors = { name: 'GA doors', count: 4, cap: 8 }; // door sets line-side at Enclosure & Doors
 
 // =====================================================================
 // Factory building
@@ -147,20 +184,32 @@ function buildFactory() {
     s.receiveShadow = true;
     scene.add(s);
   };
-  stripe(-4, -5.0, 128, 0.16);
-  stripe(-4, 5.0, 128, 0.16);
-  stripe(6, MOD_Z + 3.4, 74, 0.14);
-  stripe(66, BIW_Z + 5.6, 64, 0.14);
-  // Carrier route from the pickup pad to the south door
-  for (const dx of [-5.6, 5.6]) stripe(PICK_X + dx, (TRUCK_Z + SITE.wallZ) / 2 - 1, 0.16, SITE.wallZ - TRUCK_Z + 2);
-  // Red/white hatched no-go zone in front of the shipping crane
+  // Walkways along each line
+  stripe((PICK_X + GA_START_X) / 2 + 3, GA_Z - 5.2, GA_START_X - PICK_X + 16, 0.16);
+  stripe((PICK_X + GA_START_X) / 2 + 3, GA_Z + 5.2, GA_START_X - PICK_X + 16, 0.16);
+  stripe(-40, BIW_Z + 5.6, 76, 0.14);
+  stripe(62, MOD_Z + 3.4, 62, 0.14);
+  stripe(-56, PC_Z + 3.6, 68, 0.14);
+  stripe(16, QB_Z + 3.4, 40, 0.14);
+  stripe(70, TH_Z + 4.2, 56, 0.14);
+  stripe(72, DOOR_Z - 3.4, 46, 0.14);
+  // Main AGV aisle: blue lane edges
+  const lane = mat(0x2f6fd6, { roughness: 0.7 });
+  stripe(13, AISLE_N - 0.75, 166, 0.12, lane);
+  stripe(13, AISLE_S + 0.75, 166, 0.12, lane);
+  // Carrier route from the pickup pad to the south-west door
+  for (const dx of [-5.6, 5.6]) stripe(PICK_X + dx, (PAD_Z + SITE.wallZ) / 2, 0.16, SITE.wallZ - PAD_Z);
+  // Red/yellow hatched no-go zone in front of the shipping crane
   const hatch = mat(COLORS.weldRed, { roughness: 0.7 });
-  for (let i = 0; i < 8; i++) stripe(PICK_X - 7 + i * 2, 6.6, 0.9, 1.6, i % 2 ? paint : hatch);
+  for (let i = 0; i < 8; i++) stripe(PICK_X - 7 + i * 2, PAD_Z - 3.2, 0.9, 1.6, i % 2 ? paint : hatch);
 
   buildBuilding();
   buildFloorRails();
-  buildConveyor(-29, 41, MOD_Z, MOD_Y, 1.8, 0.4);
-  buildConveyor(31, 98.6, BIW_Z, BIW_Y, 2.3, 0.6);
+  buildConveyor(31, 94, MOD_Z, MOD_Y, 1.8, 0.4);
+  buildConveyor(-4, 36, QB_Z, MOD_Y, 2.2, 0.4);
+  buildConveyor(42, 98, TH_Z, TH_Y, 2.0, 0.6);
+  buildConveyor(50, 96, DOOR_Z, DOOR_Y, 1.6, 0.6);
+  buildConveyor(PC_START_X - 4.6, BIW_START_X + 2, BIW_Z, BIW_Y, 2.3, 0.6);
   buildWarehouse();
   buildPaintRail();
   buildFeederDecor();
@@ -173,9 +222,9 @@ function buildBuilding() {
   const white = mat(0xf1f3f5, { roughness: 0.5 });
   const rows = [
     { z: -34, letter: 'A', ok: () => true },
-    { z: -12, letter: 'F', ok: (x) => x >= -16 },
-    { z: 10, letter: 'G', ok: (x) => Math.abs(x - PICK_X) > 9 },
-    { z: 34, letter: 'K', ok: () => true },
+    { z: -12, letter: 'F', ok: () => true },
+    { z: 10, letter: 'G', ok: () => true },
+    { z: 34, letter: 'K', ok: (x) => Math.abs(x - SITE.doorX) > SITE.doorHalf + 1 },
   ];
   rows.forEach((row) => {
     for (let x = -96, n = 1; x <= 96; x += 16, n++) {
@@ -240,8 +289,8 @@ function buildBuilding() {
   const d1 = SITE.doorX + SITE.doorHalf;
   wall((-99.5 + d0) / 2, 34.4, d0 + 99.5, Math.PI);
   wall((d1 + 99.5) / 2, 34.4, 99.5 - d1, Math.PI);
-  const over = new THREE.Mesh(new THREE.PlaneGeometry(d1 - d0, 12.7), wallMat(d1 - d0));
-  over.position.set(SITE.doorX, 6.5 + 6.35, 34.4);
+  const over = new THREE.Mesh(new THREE.PlaneGeometry(d1 - d0, 19.2 - SITE.doorH), wallMat(d1 - d0));
+  over.position.set(SITE.doorX, (SITE.doorH + 19.2) / 2, 34.4);
   over.rotation.y = Math.PI;
   scene.add(over);
   for (const [x, rot] of [[-99.5, Math.PI / 2], [99.5, -Math.PI / 2]]) wall(x, 0, 68.8, rot);
@@ -257,11 +306,13 @@ function buildBuilding() {
 function buildFloorRails() {
   const railMat = mat(0x8d949c, { metalness: 0.6, roughness: 0.4 });
   const stop = mat(COLORS.weldRed);
-  const segs = [-64, -49, -35, -21, -7, 7, 21, 35, 49, 63];
+  // One rail section per station, ending under the shipping crane
+  const segs = [PICK_X - 6];
+  for (let x = GA_START_X - 13 * 7 - 6.5; x <= GA_START_X + 6.5; x += 13) segs.push(x);
   for (let i = 0; i < segs.length - 1; i++) {
     const x0 = segs[i] + 0.3;
     const x1 = segs[i + 1] - 0.3;
-    for (const z of [-0.62, 0.62]) {
+    for (const z of [GA_Z - 0.62, GA_Z + 0.62]) {
       const r = box(x1 - x0, CONV_Y - 0.02, 0.28, railMat);
       r.position.set((x0 + x1) / 2, (CONV_Y - 0.02) / 2, z);
       scene.add(r);
@@ -273,7 +324,7 @@ function buildFloorRails() {
     }
     // Drive chain channel between the rails
     const ch = box(x1 - x0, 0.06, 0.25, mat(0x3a3e44), false);
-    ch.position.set((x0 + x1) / 2, 0.03, 0);
+    ch.position.set((x0 + x1) / 2, 0.03, GA_Z);
     scene.add(ch);
   }
 }
@@ -305,9 +356,9 @@ function buildBridgeCranes() {
   const yellow = mat(COLORS.yellow, { metalness: 0.3, roughness: 0.5 });
   const blue = mat(COLORS.conveyorBlue, { metalness: 0.4, roughness: 0.4 });
   const specs = [
-    { z0: -8, z1: 8, xMin: -60, xMax: 40, y: 13.2 },
-    { z0: -8, z1: 8, xMin: -50, xMax: 46, y: 13.2 },
-    { z0: BIW_Z - 7, z1: BIW_Z + 7, xMin: 52, xMax: 92, y: 12 },
+    { z0: GA_Z - 7, z1: GA_Z + 7, xMin: -58, xMax: 22, y: 13.2 },
+    { z0: GA_Z - 7, z1: GA_Z + 7, xMin: -50, xMax: 26, y: 13.2 },
+    { z0: BIW_Z - 7, z1: BIW_Z + 7, xMin: -64, xMax: -10, y: 12 },
   ];
   for (const sp of [specs[0], specs[2]]) {
     for (const z of [sp.z0, sp.z1]) {
@@ -344,12 +395,12 @@ function buildWarehouse() {
   const upright = mat(0x2f6fd6, { metalness: 0.5, roughness: 0.5 });
   const beam = mat(0xf07a1a, { metalness: 0.4, roughness: 0.5 });
   const crateMat = mat(COLORS.module, { metalness: 0.5, roughness: 0.45 });
-  for (let bay = 0; bay < 7; bay++) {
-    const x = -78 + bay * 4.2;
+  for (let bay = 0; bay < 6; bay++) {
+    const x = 6 + bay * 4.2;
     for (const dx of [-2, 2]) {
       for (const dz of [-0.7, 0.7]) {
         const u = box(0.12, 6.4, 0.12, upright);
-        u.position.set(x + dx, 3.2, -22 + dz);
+        u.position.set(x + dx, 3.2, MOD_Z + dz);
         scene.add(u);
       }
     }
@@ -357,12 +408,12 @@ function buildWarehouse() {
       const y = 0.3 + level * 1.6;
       for (const dz of [-0.7, 0.7]) {
         const b = box(4.1, 0.12, 0.1, beam, false);
-        b.position.set(x, y, -22 + dz);
+        b.position.set(x, y, MOD_Z + dz);
         scene.add(b);
       }
       for (let k = 0; k < 2; k++) {
         const c = box(1.6, 0.9, 1.2, crateMat);
-        c.position.set(x - 0.95 + k * 1.9, y + 0.52, -22);
+        c.position.set(x - 0.95 + k * 1.9, y + 0.52, MOD_Z);
         scene.add(c);
         moduleStock.crates.push({ mesh: c, order: level * 100 + bay * 2 + k });
       }
@@ -401,7 +452,7 @@ function buildFeederDecor() {
   for (let i = 0; i < 3; i++) {
     const coil = cyl(1.0, 1.0, 1.2, 28, coilMat);
     coil.rotation.x = Math.PI / 2;
-    coil.position.set(86 + i * 2.8, 1.0, BIW_Z - 6.2);
+    coil.position.set(-8.4 + i * 2.8, 1.0, BIW_Z - 6.2);
     scene.add(coil);
     const core = cyl(0.35, 0.35, 1.22, 16, mat(COLORS.darker));
     core.rotation.x = Math.PI / 2;
@@ -413,17 +464,17 @@ function buildFeederDecor() {
   for (let i = 0; i < 6; i++) {
     for (let k = 0; k < 3; k++) {
       const b = box(1.1, 0.6, 1.1, boxMat);
-      b.position.set(42.6 + (i % 3) * 1.3, 0.3 + k * 0.62, MOD_Z - 0.7 + Math.floor(i / 3) * 1.4);
+      b.position.set(94.2 + (i % 3) * 1.3, 0.3 + k * 0.62, MOD_Z - 0.7 + Math.floor(i / 3) * 1.4);
       scene.add(b);
     }
   }
   // Powder hoppers next to the booth
   for (let i = 0; i < 2; i++) {
     const hop = cyl(0.8, 0.35, 2.4, 20, mat(COLORS.white, { roughness: 0.4 }));
-    hop.position.set(8 + i * 2.2, 2.2, BIW_Z - 4.6);
+    hop.position.set(-64 + i * 2.2, 2.2, PC_Z + 5.2);
     scene.add(hop);
     const leg = box(1.4, 1.0, 1.4, mat(COLORS.dark));
-    leg.position.set(8 + i * 2.2, 0.5, BIW_Z - 4.6);
+    leg.position.set(-64 + i * 2.2, 0.5, PC_Z + 5.2);
     scene.add(leg);
   }
 }
@@ -621,30 +672,50 @@ function finishStation(u, st) {
 // =====================================================================
 // Line definitions
 // =====================================================================
+// Arc length along a path of the point nearest (x, z), for stations on a curved line
+function nearestS(path, x, z) {
+  const L = path.getLength();
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i <= 2400; i++) {
+    const p = path.getPoint(i / 2400);
+    const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = (i / 2400) * L;
+    }
+  }
+  return best;
+}
+
+const GA_X = (i) => GA_START_X - i * 13; // GA stations are 13 m apart
+
 const MAIN = new Line({
-  id: 'pack', name: 'Pack line', prefix: 'MP', unitName: 'packs',
-  path: new THREE.LineCurve3(new THREE.Vector3(-56, CONV_Y, 0), new THREE.Vector3(PICK_X, CONV_Y, 0)),
-  speed: 4, spacing: 11, style: 'gantry', yaw: 0,
+  id: 'pack', name: 'General Assembly', prefix: 'MP', unitName: 'packs',
+  path: new THREE.LineCurve3(new THREE.Vector3(GA_START_X, CONV_Y, GA_Z), new THREE.Vector3(PICK_X, CONV_Y, GA_Z)),
+  speed: 4, spacing: 11, style: 'gantry', yaw: Math.PI,
   stations: [
-    { id: 'chassis', name: 'Chassis Load', at: -56, cycle: 5, crew: [[-2.5, 1]],
+    { id: 'chassis', name: 'Chassis Load', at: GA_X(0), cycle: 5, crew: [[-2.5, 1]],
       desc: 'A powder-coated frame comes down off the overhead paint conveyor and is lowered onto a steel skid.' },
-    { id: 'busbar', name: 'HV Busbar & Harness', at: -42, cycle: 7, crew: [[-1.5, 1], [1.5, -1]],
+    { id: 'busbar', name: 'HV Busbar & Harness', at: GA_X(1), cycle: 7, crew: [[-1.5, 1], [1.5, -1]],
       desc: 'Technicians build the high-voltage spine down the centre of the frame: vertical rails and orange insulated busbars.' },
-    { id: 'modules', name: 'Module Install', at: -28, cycle: 9, assists: [[-2.4, -1], [2.4, 1]], crew: [[-1.2, -1], [1.2, 1]],
-      consume: { buffer: moduleStock, n: TRAYS_PER_PACK },
-      desc: `AGVs bring module trays from the rack warehouse. Operators use lift-assist arms to slide 48 modules (${TRAYS_PER_PACK} trays) into the bays from both sides.` },
-    { id: 'thermal', name: 'Thermal & Inverter', at: -14, cycle: 8, platform: true, crew: [[-2, 1, true], [2, -1, true]],
-      desc: 'An overhead hoist sets the integrated thermal roof (chillers, fans) and power-conversion electronics.' },
-    { id: 'enclosure', name: 'Enclosure & Doors', at: 0, cycle: 8, assists: [[-2.4, 1], [2.4, -1]], crew: [[-1.2, 1], [1.2, -1]],
-      desc: 'Sixteen side doors are hung and swung shut, then the end caps go on, sealing the enclosure against weather and dust.' },
-    { id: 'coolant', name: 'Coolant Fill', at: 14, cycle: 6, platform: true, crew: [[2.5, -1, true], [-1, 1]],
+    { id: 'modules', name: 'Stack Install', at: GA_X(2), cycle: 9, assists: [[-2.4, -1], [2.4, 1]], crew: [[-1.2, -1], [1.2, 1]],
+      consume: { buffer: gaStacks, n: STACKS_PER_PACK },
+      desc: `AGVs bring battery stacks from Qbert. Operators use lift-assist arms to set ${STACKS_PER_PACK} stacks (48 modules) into the bays from both sides.` },
+    { id: 'thermal', name: 'Thermal Install', at: GA_X(3), cycle: 8, platform: true, crew: [[-2, 1, true], [2, -1, true]],
+      consume: { buffer: gaThermal, n: 1 },
+      desc: 'An overhead hoist sets the thermal system from the Thermal line (chillers, fans and roof) and the power-conversion electronics.' },
+    { id: 'enclosure', name: 'Enclosure & Doors', at: GA_X(4), cycle: 8, assists: [[-2.4, 1], [2.4, -1]], crew: [[-1.2, 1], [1.2, -1]],
+      consume: { buffer: gaDoors, n: DOOR_SETS_PER_PACK },
+      desc: 'Sixteen doors from Door Assembly are hung and swung shut, then the end caps go on, sealing the enclosure against weather and dust.' },
+    { id: 'coolant', name: 'Coolant Fill', at: GA_X(5), cycle: 6, platform: true, crew: [[2.5, -1, true], [-1, 1]],
       desc: 'The glycol coolant loop is vacuum-checked for leaks, then filled and bled.' },
-    { id: 'eol', name: 'End-of-Line Test', at: 28, cycle: 10, failRate: 0.06, failText: 'insulation test', crew: [[-3, 1]],
+    { id: 'eol', name: 'End-of-Line Test', at: GA_X(6), cycle: 10, failRate: 0.06, failText: 'insulation test', crew: [[-3, 1]],
       desc: 'Full functional test: insulation resistance, BMS comms and a charge/discharge pulse. Failures are re-tested.' },
-    { id: 'qa', name: 'Final QA', at: 42, cycle: 5, crew: [[-1.5, 1], [1.5, -1]],
+    { id: 'qa', name: 'Final QA', at: GA_X(7), cycle: 5, crew: [[-1.5, 1], [1.5, -1]],
       desc: 'Visual and dimensional inspection, serial labelling and release to the shipping crane.' },
   ],
-  sOf: (x) => x + 56,
+  sOf: (x) => GA_START_X - x,
   makeUnit() {
     const u = createMegapack();
     u.frameDrop = FRAME_DROP;
@@ -652,33 +723,33 @@ const MAIN = new Line({
     return u;
   },
   place(u) {
-    u.group.position.set(-56 + u.s, CONV_Y, 0);
+    u.group.position.set(GA_START_X - u.s, CONV_Y, GA_Z);
   },
   progress: mainProgress,
 });
 
 const MODULE = new Line({
   id: 'module', name: 'Battery Modules', prefix: 'MT', unitName: 'trays',
-  path: new THREE.LineCurve3(new THREE.Vector3(38, MOD_Y, MOD_Z), new THREE.Vector3(-26, MOD_Y, MOD_Z)),
+  path: new THREE.LineCurve3(new THREE.Vector3(92, MOD_Y, MOD_Z), new THREE.Vector3(31, MOD_Y, MOD_Z)),
   speed: 3.5, spacing: 3.0, style: 'mini', yaw: Math.PI, autoSpawn: true,
   stations: [
-    { id: 'm-intake', name: 'Cell Intake & Test', at: 38, cycle: 2.0,
+    { id: 'm-intake', name: 'Cell Intake & Test', at: 88, cycle: 2.0,
       desc: 'Cylindrical cells are de-palletised, scanned and OCV/IR tested; a module tray is indexed onto the line.' },
-    { id: 'm-insert', name: 'Cell Insertion', at: 29, cycle: 2.2, robots: [[0, 1]],
+    { id: 'm-insert', name: 'Cell Insertion', at: 79, cycle: 2.2, robots: [[0, 1]],
       desc: 'A robot loads 144 tested cells into the tray’s twelve module carriers.' },
-    { id: 'm-weld', name: 'Interconnect Weld', at: 20, cycle: 2.2, robots: [[0, -1]], sparks: true,
+    { id: 'm-weld', name: 'Interconnect Weld', at: 70, cycle: 2.2, robots: [[0, -1]], sparks: true,
       desc: 'Laser welding joins every cell to the copper current-collector plates.' },
-    { id: 'm-pot', name: 'Adhesive & Potting', at: 11, cycle: 2.0,
+    { id: 'm-pot', name: 'Adhesive & Potting', at: 61, cycle: 2.0,
       desc: 'A dispensing head fills the gaps with thermally-conductive potting compound.' },
-    { id: 'm-lid', name: 'Module Lid & BMS Board', at: 2, cycle: 2.2, robots: [[0, 1]], gripper: true,
+    { id: 'm-lid', name: 'Module Lid & BMS Board', at: 52, cycle: 2.2, robots: [[0, 1]], gripper: true,
       desc: 'A robot with a red gripper places module lids and the green battery-management boards on top.' },
-    { id: 'm-test', name: 'Module EOL Test', at: -7, cycle: 2.2, failRate: 0.03, failText: 'module isolation test',
-      desc: 'Voltage, isolation and BMS-board checks. Passing trays go to the rack warehouse.' },
+    { id: 'm-test', name: 'Module EOL Test', at: 43, cycle: 2.2, failRate: 0.03, failText: 'module isolation test',
+      desc: 'Voltage, isolation and BMS-board checks. Passing trays go to the module racks for Qbert.' },
   ],
-  sOf: (x) => 38 - x,
+  sOf: (x) => 92 - x,
   makeUnit: () => createModuleTray(),
   place(u) {
-    u.group.position.set(38 - u.s, MOD_Y, MOD_Z);
+    u.group.position.set(92 - u.s, MOD_Y, MOD_Z);
   },
   onEnd() {
     if (moduleStock.count >= moduleStock.cap) return false;
@@ -688,21 +759,102 @@ const MODULE = new Line({
   progress: moduleProgress,
 });
 
-const BIW = new Line({
-  id: 'biw', name: 'Body in White', prefix: 'BW', unitName: 'frames',
-  path: new THREE.LineCurve3(new THREE.Vector3(94, BIW_Y, BIW_Z), new THREE.Vector3(PC_START_X, BIW_Y, BIW_Z)),
-  speed: 4, spacing: 11.5, style: 'gantry', yaw: Math.PI, autoSpawn: true,
+const QBERT = new Line({
+  id: 'qbert', name: 'Qbert', prefix: 'BS', unitName: 'stacks',
+  path: new THREE.LineCurve3(new THREE.Vector3(36, MOD_Y, QB_Z), new THREE.Vector3(-2, MOD_Y, QB_Z)),
+  speed: 3.5, spacing: 3.2, style: 'mini', yaw: Math.PI, autoSpawn: true,
   stations: [
-    { id: 'b-base', name: 'Base Frame Weld', at: 88, cycle: 6, robots: [[-2.2, -1], [2.2, 1]], sparks: true,
-      desc: 'Roll-formed steel rails are clamped in a fixture and robot-welded into the base frame.' },
-    { id: 'b-side', name: 'Side Post Weld', at: 76, cycle: 7, robots: [[-2.2, 1], [2.2, -1]], sparks: true,
-      desc: 'Fourteen vertical posts are positioned and MIG-welded to the base.' },
-    { id: 'b-roof', name: 'Roof Rail Weld', at: 64, cycle: 6, robots: [[-2.2, -1], [2.2, 1]], sparks: true,
-      desc: 'Top rails and cross members close the frame into a rigid box.' },
-    { id: 'b-cmm', name: 'Geometry Check', at: 52, cycle: 5,
-      desc: 'A laser scanning arch measures the welded frame against CAD before it goes to paint.' },
+    { id: 'q-feed', name: 'Tray Infeed', at: 32, cycle: 2.2, robots: [[0, 1]], consume: { buffer: qbertIn, n: 1 },
+      desc: 'AGVs bring module trays from the module racks. A robot de-stacks the tray and sets the first layer of modules on a stack base.' },
+    { id: 'q-stack', name: 'Qbert Stacking', at: 23, cycle: 2.4, robots: [[-1.2, 1], [1.2, -1]], gripper: true,
+      desc: 'Two robots stack the remaining modules layer by layer into a 4 × 3 battery stack, the pyramid of cubes the cell is named after.' },
+    { id: 'q-strap', name: 'Compress & Strap', at: 14, cycle: 2.2,
+      desc: 'The stack is compressed and strapped, and the copper inter-module busbar is fitted on top.' },
+    { id: 'q-test', name: 'Stack HV Test', at: 5, cycle: 2.0, failRate: 0.03, failText: 'stack isolation test',
+      desc: 'Isolation, voltage and BMS checks. Passing stacks go to staging, where AGVs take them to General Assembly.' },
+  ],
+  sOf: (x) => 36 - x,
+  makeUnit: () => createBatteryStack(),
+  place(u) {
+    u.group.position.set(36 - u.s, MOD_Y, QB_Z);
+  },
+  onEnd() {
+    if (stackStock.count >= stackStock.cap) return false;
+    stackStock.count++;
+    return true;
+  },
+  progress: qbertProgress,
+});
+
+const THERMAL = new Line({
+  id: 'thermal', name: 'Thermal System', prefix: 'TS', unitName: 'thermal systems',
+  path: new THREE.LineCurve3(new THREE.Vector3(96, TH_Y, TH_Z), new THREE.Vector3(44, TH_Y, TH_Z)),
+  speed: 4, spacing: 11, style: 'open', yaw: Math.PI, autoSpawn: true,
+  stations: [
+    { id: 't-frame', name: 'Chiller & Pump Frame', at: 90, cycle: 7, long: true, crew: [[-2, 1], [2, -1]],
+      desc: 'Chillers, the coolant pump and the thermal controller are bolted onto the steel thermal frame.' },
+    { id: 't-braze', name: 'Refrigerant Brazing', at: 77, cycle: 8, long: true, robots: [[0, -1]], sparks: true,
+      desc: 'A robot brazes the copper refrigerant lines; the loop is evacuated and charged.' },
+    { id: 't-fans', name: 'Roof & Fans', at: 64, cycle: 7, long: true, crew: [[-2, 1], [2, -1]],
+      desc: 'The roof shell is lowered onto the frame and the ten condenser fans are fitted.' },
+    { id: 't-test', name: 'Thermal Run Test', at: 51, cycle: 8, long: true, failRate: 0.04, failText: 'refrigerant leak check',
+      desc: 'The thermal system is run up: coolant flow, pressures, fan speeds and a refrigerant leak check. AGVs take passing units to GA.' },
+  ],
+  sOf: (x) => 96 - x,
+  makeUnit: () => createThermalUnit(),
+  place(u) {
+    u.group.position.set(96 - u.s, TH_Y, TH_Z);
+  },
+  onEnd() {
+    if (thermalOut.count >= thermalOut.cap) return false;
+    thermalOut.count++;
+    return true;
+  },
+  progress: thermalProgress,
+});
+
+const DOOR = new Line({
+  id: 'door', name: 'Door Assembly', prefix: 'DS', unitName: 'door sets',
+  path: new THREE.LineCurve3(new THREE.Vector3(94, DOOR_Y, DOOR_Z), new THREE.Vector3(52, DOOR_Y, DOOR_Z)),
+  speed: 3.5, spacing: 3.2, style: 'mini', yaw: Math.PI, autoSpawn: true,
+  stations: [
+    { id: 'd-panel', name: 'Door Panel Load', at: 88, cycle: 2.2, crew: [[-1, 1]],
+      desc: 'Four powder-coated door panels are loaded upright on a door cart.' },
+    { id: 'd-hinge', name: 'Hinges & Latches', at: 79, cycle: 2.4, robots: [[0, -1]],
+      desc: 'A screwdriving robot fits the hinges and the three-point latches.' },
+    { id: 'd-seal', name: 'Gasket & Seal', at: 70, cycle: 2.2, robots: [[0, 1]],
+      desc: 'A robot lays the weather gasket around each door.' },
+    { id: 'd-qc', name: 'Door Inspection', at: 61, cycle: 2.0, failRate: 0.02, failText: 'gasket check',
+      desc: 'A vision arch checks the gasket bead and latch alignment. Door sets go to staging for General Assembly.' },
   ],
   sOf: (x) => 94 - x,
+  makeUnit: () => createDoorSet(),
+  place(u) {
+    u.group.position.set(94 - u.s, DOOR_Y, DOOR_Z);
+  },
+  onEnd() {
+    if (doorOut.count >= doorOut.cap) return false;
+    doorOut.count++;
+    return true;
+  },
+  progress: doorProgress,
+});
+
+const BIW = new Line({
+  id: 'biw', name: 'Body in White', prefix: 'BW', unitName: 'frames',
+  path: new THREE.LineCurve3(new THREE.Vector3(BIW_START_X, BIW_Y, BIW_Z), new THREE.Vector3(PC_START_X, BIW_Y, BIW_Z)),
+  speed: 4, spacing: 11.5, style: 'gantry', yaw: Math.PI, autoSpawn: true,
+  stations: [
+    { id: 'b-base', name: 'Base Frame Weld', at: -16, cycle: 6, robots: [[-2.2, -1], [2.2, 1]], sparks: true,
+      desc: 'Roll-formed steel rails are clamped in a fixture and robot-welded into the base frame.' },
+    { id: 'b-side', name: 'Side Post Weld', at: -30, cycle: 7, robots: [[-2.2, 1], [2.2, -1]], sparks: true,
+      desc: 'Fourteen vertical posts are positioned and MIG-welded to the base.' },
+    { id: 'b-roof', name: 'Roof Rail Weld', at: -44, cycle: 6, robots: [[-2.2, -1], [2.2, 1]], sparks: true,
+      desc: 'Top rails and cross members close the frame into a rigid box.' },
+    { id: 'b-cmm', name: 'Geometry Check', at: -58, cycle: 5,
+      desc: 'A laser scanning arch measures the welded frame against CAD before it goes to paint.' },
+  ],
+  sOf: (x) => BIW_START_X - x,
   makeUnit() {
     const frame = createFrame(FRAME_MATS.bare);
     frame.userData.meshes.forEach((m) => { m.visible = false; });
@@ -711,7 +863,7 @@ const BIW = new Line({
     return { group, frame };
   },
   place(u) {
-    u.group.position.set(94 - u.s, BIW_Y, BIW_Z);
+    u.group.position.set(BIW_START_X - u.s, BIW_Y, BIW_Z);
   },
   progress: biwProgress,
 });
@@ -721,18 +873,20 @@ const PC = new Line({
   path: roundedPath(PC_POINTS, 3.5),
   speed: 4, spacing: 11, yaw: Math.PI,
   stations: [
-    { id: 'p-load', name: 'Load & Hang', at: 36, cycle: 5, style: 'open',
+    { id: 'p-load', name: 'Load & Hang', at: PC_START_X, z: BIW_Z, cycle: 5, style: 'open',
       desc: 'The welded frame is lifted off the BIW conveyor and hung on an overhead power-and-free carrier.' },
-    { id: 'p-wash', name: 'Pre-treatment Wash', at: 23, cycle: 6, style: 'tunnel',
+    { id: 'p-wash', name: 'Pre-treatment Wash', at: -76, cycle: 6, style: 'tunnel',
       desc: 'Alkaline degrease, rinse and zirconium conversion coat so the powder bonds to the steel.' },
-    { id: 'p-booth', name: 'Powder Booth', at: 10, cycle: 7, style: 'tunnel', robots: [[-1.6, -1], [1.6, 1]],
+    { id: 'p-booth', name: 'Powder Booth', at: -62, cycle: 7, style: 'tunnel', robots: [[-1.6, -1], [1.6, 1]],
       desc: 'Electrostatic spray robots coat the frame in white polyester powder.' },
-    { id: 'p-oven', name: 'Cure Oven', at: -4, cycle: 8, style: 'tunnel', long: true,
+    { id: 'p-oven', name: 'Cure Oven', at: -46, cycle: 8, style: 'tunnel', long: true,
       desc: 'The powder melts and cross-links at ~200 °C into a hard, weather-proof finish.' },
-    { id: 'p-cool', name: 'Cool & Inspect', at: -16, cycle: 4, style: 'open',
-      desc: 'Fans cool the frame; film thickness and gloss are checked before it rides the rail to the pack line.' },
+    { id: 'p-cool', name: 'Cool & Inspect', at: -30, cycle: 4, style: 'open',
+      desc: 'Fans cool the frame; film thickness and gloss are checked before it rides the rail over to General Assembly.' },
   ],
-  sOf: (x) => PC_START_X - x,
+  sOf(x, cfg) {
+    return nearestS(this.path, x, cfg?.z ?? PC_Z);
+  },
   makeUnit() {
     const c = createCarrier();
     const frame = createFrame(FRAME_MATS.bare);
@@ -894,6 +1048,211 @@ function paintProgress(u, st, p) {
   }
 }
 
+// ---------------- feeder products ----------------
+// Each one builds up station by station; parts start hidden and are revealed by progress.
+const stackModMat = mat(COLORS.module, { metalness: 0.5, roughness: 0.45 });
+function unitLight(y) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: COLORS.amber, toneMapped: false }));
+  m.position.y = y;
+  m.visible = false;
+  return m;
+}
+
+// Battery stack from Qbert: 12 modules in a 4 × 3 block on a base, strapped, with a busbar on top
+function createBatteryStack() {
+  const group = new THREE.Group();
+  const base = box(2.0, 0.1, 1.2, mat(COLORS.darker));
+  base.position.y = 0.05;
+  group.add(base);
+  const front = mat(COLORS.hvOrange, { roughness: 0.5 });
+  const modules = [];
+  for (let l = 0; l < 3; l++) {
+    for (let c = 0; c < 4; c++) {
+      const m = new THREE.Group();
+      m.add(box(0.44, 0.3, 1.04, stackModMat));
+      const face = box(0.36, 0.08, 0.02, front, false);
+      face.position.set(0, 0.04, 0.53);
+      m.add(face);
+      m.position.set(-0.69 + c * 0.46, 0.25 + l * 0.31, 0);
+      m.visible = false;
+      group.add(m);
+      modules.push(m);
+    }
+  }
+  const straps = [-0.5, 0.5].map((x) => {
+    const st = box(0.06, 1.0, 1.12, mat(0xf2c230, { roughness: 0.6 }), false);
+    st.position.set(x, 0.6, 0);
+    st.visible = false;
+    group.add(st);
+    return st;
+  });
+  const bar = box(1.8, 0.04, 0.1, mat(COLORS.copper, { metalness: 0.85, roughness: 0.3 }), false);
+  bar.position.y = 1.12;
+  const conn = box(0.16, 0.12, 0.16, front, false);
+  conn.position.set(0.85, 1.18, 0);
+  const bus = [bar, conn];
+  bus.forEach((b) => { b.visible = false; group.add(b); });
+  const statusLight = unitLight(1.4);
+  group.add(statusLight);
+  return { group, modules, straps, bus, statusLight };
+}
+
+// Thermal system: steel frame with chillers and copper refrigerant lines under the fan roof
+function createThermalUnit() {
+  const group = new THREE.Group();
+  const frame = box(PACK.L, 0.12, PACK.W, mat(0x5b6168, { metalness: 0.5, roughness: 0.45 }));
+  frame.position.y = 0.06;
+  group.add(frame);
+  const chillers = [-2.8, 0, 2.8].map((x) => {
+    const c = box(1.6, 0.42, 1.3, mat(0x9aa3ad, { metalness: 0.4, roughness: 0.45 }));
+    c.position.set(x, 0.33, 0);
+    c.visible = false;
+    group.add(c);
+    return c;
+  });
+  const copper = mat(COLORS.copper, { metalness: 0.85, roughness: 0.3 });
+  const pipes = [];
+  for (let i = 0; i < 6; i++) {
+    const pipe = box(1.3, 0.05, 0.05, copper, false);
+    pipe.position.set(-3.75 + i * 1.5, 0.58, i % 2 ? 0.45 : -0.45);
+    pipe.visible = false;
+    group.add(pipe);
+    pipes.push(pipe);
+  }
+  const roof = createRoof();
+  roof.position.y = 0.6;
+  group.add(roof);
+  const kids = roof.children.slice();
+  kids.forEach((k) => { k.visible = false; });
+  const statusLight = unitLight(1.3);
+  group.add(statusLight);
+  // createRoof: shell first, then 10 fans with hubs, then the louvres
+  return { group, chillers, pipes, roofParts: [kids[0], ...kids.slice(21)], fans: kids.slice(1, 21), statusLight };
+}
+
+// Door set: four Megapack doors standing on an A-frame cart
+function createDoorSet() {
+  const group = new THREE.Group();
+  const dark = mat(COLORS.dark);
+  const steel = mat(COLORS.steel, { metalness: 0.6, roughness: 0.4 });
+  const cart = box(1.5, 0.12, 1.1, dark);
+  cart.position.y = 0.06;
+  group.add(cart);
+  for (const x of [-0.68, 0.68]) {
+    const post = box(0.06, 2.2, 0.06, steel);
+    post.position.set(x, 1.2, 0);
+    group.add(post);
+  }
+  const top = box(1.42, 0.06, 0.06, steel);
+  top.position.set(0, 2.3, 0);
+  group.add(top);
+  const white = mat(COLORS.white, { roughness: 0.45 });
+  const black = mat(0x16181b, { roughness: 0.7 });
+  const panels = [];
+  const hinges = [];
+  const gaskets = [];
+  for (const z of [-0.36, -0.12, 0.12, 0.36]) {
+    const p = box(1.1, 2.1, 0.05, white);
+    p.position.set(0, 1.18, z);
+    panels.push(p);
+    // Weather gasket: a thin black border round the inside face of the door
+    const gk = new THREE.Group();
+    for (const [w, h, x, y] of [[1.16, 0.04, 0, 1.06], [1.16, 0.04, 0, -1.06], [0.04, 2.16, 0.56, 0], [0.04, 2.16, -0.56, 0]]) {
+      const strip = box(w, h, 0.03, black, false);
+      strip.position.set(x, y, 0);
+      gk.add(strip);
+    }
+    gk.position.set(0, 1.18, z + 0.035);
+    gaskets.push(gk);
+    for (const y of [0.55, 1.8]) {
+      const h = box(0.06, 0.18, 0.09, dark, false);
+      h.position.set(-0.57, y, z);
+      hinges.push(h);
+    }
+  }
+  [...panels, ...gaskets, ...hinges].forEach((m) => { m.visible = false; group.add(m); });
+  const statusLight = unitLight(2.55);
+  group.add(statusLight);
+  return { group, panels, hinges, gaskets, statusLight };
+}
+
+// Finished feeder products for staging and line-side stock, baked to one mesh each
+function bakedProduct(make) {
+  const u = make();
+  u.group.traverse((o) => { o.visible = true; });
+  u.statusLight.visible = false;
+  u.group.remove(u.statusLight);
+  return mergeColored(u.group);
+}
+const STACK_PROTO = bakedProduct(createBatteryStack);
+const DOOR_PROTO = bakedProduct(createDoorSet);
+const ROOF_PROTO = bakedProduct(createThermalUnit);
+
+function revealRange(list, from, to, p) {
+  const n = from + Math.floor(p * (to - from) + 1e-4);
+  for (let i = from; i < to; i++) list[i].visible = i < n;
+}
+
+function scanAndTest(u, st, p) {
+  const e = st.extras;
+  e.scanner.visible = p < 1;
+  e.scanner.position.x = Math.sin(p * Math.PI * 2) * e.scanAmp;
+  testLight(u, p);
+}
+
+function qbertProgress(u, st, p) {
+  switch (st.cfg.id) {
+    case 'q-feed':
+      revealRange(u.modules, 0, 4, p);
+      break;
+    case 'q-stack':
+      revealRange(u.modules, 4, 12, p);
+      break;
+    case 'q-strap':
+      revealCount(u.straps, p);
+      if (p > 0.6) u.bus.forEach((b) => { b.visible = true; });
+      break;
+    case 'q-test':
+      testLight(u, p);
+      break;
+  }
+}
+
+function thermalProgress(u, st, p) {
+  switch (st.cfg.id) {
+    case 't-frame':
+      revealCount(u.chillers, p);
+      break;
+    case 't-braze':
+      revealCount(u.pipes, p);
+      break;
+    case 't-fans':
+      if (p > 0.15) u.roofParts.forEach((r) => { r.visible = true; });
+      revealCount(u.fans, clamp01((p - 0.2) / 0.8));
+      break;
+    case 't-test':
+      scanAndTest(u, st, p);
+      break;
+  }
+}
+
+function doorProgress(u, st, p) {
+  switch (st.cfg.id) {
+    case 'd-panel':
+      revealCount(u.panels, p);
+      break;
+    case 'd-hinge':
+      revealCount(u.hinges, p);
+      break;
+    case 'd-seal':
+      revealCount(u.gaskets, p);
+      break;
+    case 'd-qc':
+      scanAndTest(u, st, p);
+      break;
+  }
+}
+
 // =====================================================================
 // Stations
 // =====================================================================
@@ -913,7 +1272,7 @@ function signMesh(tex, w, h) {
 function buildStation(line, cfg, index) {
   const styleName = cfg.style ?? line.style;
   const sty = STYLE[styleName];
-  const s = line.sOf(cfg.at);
+  const s = line.sOf(cfg.at, cfg);
   const p = line.path.getPoint(s / line.L);
   const st = {
     cfg, line, index, s, sty, styleName, status: 'idle', occupant: null, waiting: false,
@@ -921,7 +1280,7 @@ function buildStation(line, cfg, index) {
     robots: [], extras: {}, group: new THREE.Group(),
   };
   st.group.position.set(p.x, 0, p.z);
-  st.group.rotation.y = line.yaw;
+  st.group.rotation.y = cfg.yaw ?? line.yaw;
   scene.add(st.group);
 
   const frameMat = mat(0x9aa1a9, { metalness: 0.6, roughness: 0.4 });
@@ -1154,7 +1513,16 @@ function buildStationExtras(st) {
   const g = st.group;
   const e = st.extras;
   const sty = st.sty;
-  if (st.line === MODULE) moduleGuard(g, 3.9, 2.35, 2.2);
+  if (st.line === MODULE || st.line === QBERT || st.line === DOOR) moduleGuard(g, 3.9, 2.35, 2.2);
+  // Line-side stock that a feeder buffer fills (shown up to its capacity)
+  const stockAt = (buffer, proto, spots) => {
+    e.stock = { buffer, meshes: spots.map(([x, y, z]) => {
+      const m = proto.clone();
+      m.position.set(x, y, z);
+      g.add(m);
+      return m;
+    }) };
+  };
   switch (st.cfg.id) {
     // ---------------- pack line ----------------
     case 'chassis': {
@@ -1173,6 +1541,10 @@ function buildStationExtras(st) {
       const table = box(3.2, 0.9, 1.6, mat(COLORS.steel, { metalness: 0.5 }));
       table.position.set(0, 0.45, -6.2);
       g.add(table);
+      // Battery stacks delivered by AGV, two high on the aisle side
+      const spots = [];
+      for (let l = 0; l < 2; l++) for (let i = 0; i < 4; i++) spots.push([-3.3 + i * 2.2, l * 1.26, 6.6]);
+      stockAt(gaStacks, STACK_PROTO, spots);
       break;
     }
     case 'busbar': {
@@ -1191,20 +1563,15 @@ function buildStationExtras(st) {
       g.add(e.carrier);
       e.cables = [-3.2, 3.2].map((x) => hoistCable(g, x, 0, 6.85));
       e.carrierY = 6.2;
-      for (let i = 0; i < 2; i++) {
-        const r = createRoof();
-        r.position.set(0, i * 0.5, 7.2);
-        g.add(r);
-      }
+      // Thermal systems delivered by AGV, stacked on the aisle side
+      stockAt(gaThermal, ROOF_PROTO, [[0, 0, 7.2], [0, 1.25, 7.2]]);
       break;
     }
     case 'enclosure': {
-      for (let i = 0; i < 6; i++) {
-        const p = box(1.4, 2.0, 0.05, mat(COLORS.white));
-        p.position.set(-1.8 + i * 0.12, 1.0, 6.9 + i * 0.07);
-        p.rotation.x = -0.08;
-        g.add(p);
-      }
+      // Door sets delivered by tugger from Door Assembly
+      const spots = [];
+      for (let i = 0; i < 8; i++) spots.push([-3.3 + (i % 4) * 2.2, 0, i < 4 ? 6.4 : 7.6]);
+      stockAt(gaDoors, DOOR_PROTO, spots);
       break;
     }
     case 'coolant': {
@@ -1243,7 +1610,8 @@ function buildStationExtras(st) {
 
     // ---------------- battery module line ----------------
     case 'm-intake':
-    case 'm-test': {
+    case 'm-test':
+    case 'q-test': {
       e.head = box(1.6, 0.35, 1.2, mat(COLORS.dark, { metalness: 0.5 }));
       e.headTop = 2.6;
       e.head.position.y = e.headTop;
@@ -1270,6 +1638,101 @@ function buildStationExtras(st) {
       g.add(drum);
       break;
     }
+
+    // ---------------- qbert ----------------
+    case 'q-feed': {
+      // Module trays waiting at the infeed
+      for (let i = 0; i < 2; i++) {
+        const c = box(1.6, 0.9, 1.2, mat(COLORS.module, { metalness: 0.5, roughness: 0.45 }));
+        c.position.set(-2.6, 0.45 + i * 0.92, -1.6);
+        g.add(c);
+      }
+      break;
+    }
+    case 'q-stack': {
+      // A little pyramid of cubes by the cell, which is where Qbert gets its name
+      const cube = [mat(0xf2801f), mat(0x2f6fd6), mat(0xf2c230)];
+      let k = 0;
+      for (let l = 0; l < 3; l++) {
+        for (let i = 0; i < 3 - l; i++) {
+          const c = box(0.42, 0.42, 0.42, cube[k++ % 3]);
+          c.position.set(2.7 + i * 0.44 + l * 0.22, 0.21 + l * 0.42, 1.75);
+          g.add(c);
+        }
+      }
+      break;
+    }
+    case 'q-strap': {
+      const yellow = mat(COLORS.yellow, { roughness: 0.5 });
+      for (const z of [-1.0, 1.0]) {
+        const post = box(0.16, 2.6, 0.16, yellow);
+        post.position.set(0, 1.3, z);
+        g.add(post);
+      }
+      const top = box(0.2, 0.2, 2.2, yellow);
+      top.position.set(0, 2.6, 0);
+      g.add(top);
+      const spool = cyl(0.35, 0.35, 0.25, 18, mat(0xf2c230));
+      spool.rotation.x = Math.PI / 2;
+      spool.position.set(1.6, 1.2, -1.5);
+      g.add(spool);
+      break;
+    }
+
+    // ---------------- thermal system ----------------
+    case 't-frame':
+      for (let i = 0; i < 2; i++) {
+        const c = box(1.6, 0.42, 1.3, mat(0x9aa3ad, { metalness: 0.4, roughness: 0.45 }));
+        c.position.set(-2 + i * 1.8, 0.21, -4.2);
+        g.add(c);
+      }
+      break;
+    case 't-braze':
+      for (let i = 0; i < 3; i++) {
+        const b = cyl(0.18, 0.18, 1.3, 14, mat(0x2e9e5b, { roughness: 0.4 }));
+        b.position.set(-3.6 + i * 0.45, 0.65, -4.2);
+        g.add(b);
+      }
+      break;
+    case 't-fans': {
+      for (let i = 0; i < 4; i++) {
+        const f = cyl(0.3, 0.3, 0.05, 20, mat(COLORS.dark));
+        f.position.set(3, 0.3 + i * 0.06, 4.2);
+        g.add(f);
+      }
+      const pal = box(1.2, 0.25, 1.0, mat(0xa57a4c, { roughness: 0.85 }));
+      pal.position.set(3, 0.13, 4.2);
+      g.add(pal);
+      break;
+    }
+    case 't-test':
+      e.scanner = scannerArch(COLORS.teal, 1.7, PACK.W + 0.8, TH_Y);
+      e.scanAmp = PACK.L / 2;
+      g.add(e.scanner);
+      testCabinets(st, -2.4, -4.4);
+      break;
+
+    // ---------------- door assembly ----------------
+    case 'd-panel':
+      for (let i = 0; i < 5; i++) {
+        const p = box(1.1, 2.1, 0.05, mat(COLORS.white, { roughness: 0.45 }));
+        p.position.set(2.6, 1.07, -1.7 + i * 0.09);
+        p.rotation.x = -0.06;
+        g.add(p);
+      }
+      break;
+    case 'd-seal': {
+      const drum = cyl(0.4, 0.4, 0.9, 18, mat(0x16181b, { roughness: 0.6 }));
+      drum.position.set(2.6, 0.45, 1.6);
+      g.add(drum);
+      break;
+    }
+    case 'd-qc':
+      e.scanner = scannerArch(0x5ab0ff, 2.6, 1.7, DOOR_Y);
+      e.scanAmp = 0.9;
+      g.add(e.scanner);
+      testCabinets(st, -1.4, sty.halfZ + 0.7, 0.6);
+      break;
 
     // ---------------- body in white ----------------
     case 'b-base':
@@ -1302,6 +1765,7 @@ function buildStationExtras(st) {
     }
     case 'b-cmm':
       e.scanner = scannerArch(0x5ab0ff, FRAME_H + 0.6, PACK.W + 1.0, BIW_Y);
+      e.scanAmp = PACK.L / 2;
       g.add(e.scanner);
       testCabinets(st, -2.4, 6.4);
       break;
@@ -1440,18 +1904,19 @@ for (const line of lines) line.stationCfgs.forEach((cfg, i) => buildStation(line
 // =====================================================================
 // Shipping crane + trucks
 // =====================================================================
-const crane = { state: 'idle', z: 0, hookY: 7.5, load: null, group: new THREE.Group() };
+// The crane runs north–south between GA (z = GA_Z) and the pickup pad by the south-west door.
+const crane = { state: 'idle', z: GA_Z, hookY: 7.5, load: null, group: new THREE.Group() };
 {
   const yellow = mat(COLORS.yellow, { metalness: 0.3, roughness: 0.5 });
   const steel = mat(0x3a3f46, { metalness: 0.6, roughness: 0.4 });
   for (const x of [PICK_X - 7.5, PICK_X + 7.5]) {
-    for (const z of [-4, TRUCK_Z + 4]) {
+    for (const z of [GA_Z - 4, PAD_Z + 4]) {
       const col = box(0.6, 11, 0.6, steel);
       col.position.set(x, 5.5, z);
       scene.add(col);
     }
-    const rail = box(0.6, 0.6, TRUCK_Z + 9, steel);
-    rail.position.set(x, 11.2, TRUCK_Z / 2);
+    const rail = box(0.6, 0.6, PAD_Z - GA_Z + 9, steel);
+    rail.position.set(x, 11.2, (GA_Z + PAD_Z) / 2);
     scene.add(rail);
   }
   const bridge = box(16, 0.9, 1.2, yellow);
@@ -1482,7 +1947,7 @@ const crane = { state: 'idle', z: 0, hookY: 7.5, load: null, group: new THREE.Gr
   scene.add(crane.group);
   // Pickup pad where the crane sets finished packs down for the straddle carriers
   const pad = box(10.5, 0.04, 3.4, mat(0x3b3f45, { roughness: 0.9 }), false);
-  pad.position.set(PICK_X, 0.02, TRUCK_Z);
+  pad.position.set(PICK_X, 0.02, PAD_Z);
   pad.receiveShadow = true;
   scene.add(pad);
 }
@@ -1493,10 +1958,10 @@ const crane = { state: 'idle', z: 0, hookY: 7.5, load: null, group: new THREE.Gr
 // The crane sets each finished pack on a pad inside the building. Tandem pairs of red
 // straddle carriers take it out through the south door to the storage lot, and later load
 // stored packs onto outbound trucks on the south road. A full lot backs up the pack line.
-const PAD = { x: PICK_X, z: TRUCK_Z, unit: null, claimed: false };
+const PAD = { x: PICK_X, z: PAD_Z, unit: null, claimed: false };
 const LANE_Z = 54; // carrier cross lane between the dock trailers and the lot
 const AISLES = [19, 57, 95]; // carrier aisles through the lot (run north–south)
-const SLOT_OFFSET = 9.5; // aisle centre → slot centre (a carried pack is 8.8 m long)
+const SLOT_OFFSET = 10.4; // aisle centre → slot centre: a carrier in the aisle spans ±5.2 m
 const ROW_Z0 = 59;
 const ROW_PITCH = 3.6;
 const ROWS = 10;
@@ -1504,9 +1969,10 @@ const BAY_X = 70; // trailer centre of the truck being loaded
 const HOLD_X = 28; // the next truck waits here, clear of the carrier aisle
 const TRUCK_START = -300;
 const TRUCK_END = 300;
-const BEAM_GRIP = 1.0; // lift-beam height above the pack's underside when gripping
-const BEAM = { empty: 3.9, carry: BEAM_GRIP + 1.5, ground: BEAM_GRIP, truck: BEAM_GRIP + TRUCK_BED };
-const CARRIER_SPEED = 15; // sim m/s (time is compressed: 1 s = 5 factory minutes)
+// Spreader heights of the straddle carrier (src/battery/models.js); the load hangs SC.pickLift below it
+const BEAM = { empty: SC.parkedLift, carry: SC.travelLift, ground: SC.pickLift, truck: SC.pickLift + TRUCK_BED };
+const CARRIER_SPEED = 20; // sim m/s (time is compressed: 1 s = 5 factory minutes)
+const TRUCK_AISLE = AISLES[1]; // carriers cross the lot to the truck bay down the middle aisle
 
 const slots = [];
 for (const ax of AISLES) {
@@ -1520,7 +1986,7 @@ for (const ax of AISLES) {
 slots.sort((a, b) => Math.abs(a.x - SITE.doorX) + a.z * 0.6 - (Math.abs(b.x - SITE.doorX) + b.z * 0.6));
 let yardSerial = 0;
 function storeFinished(slot, id) {
-  const group = createFinishedPack();
+  const group = createMegapackUnit();
   group.position.set(slot.x, 0, slot.z);
   scene.add(group);
   slot.unit = { id, group };
@@ -1534,8 +2000,8 @@ function access(loc) {
     case 'door': return [[SITE.doorX, SITE.wallZ + 6], [SITE.doorX, LANE_Z]];
     case 'slot': return [[loc.slot.x, loc.slot.z], [loc.slot.aisle, loc.slot.z], [loc.slot.aisle, LANE_Z]];
     case 'aisle': return [[loc.slot.aisle, loc.slot.z], [loc.slot.aisle, LANE_Z]];
-    case 'truck': return [[BAY_X, SITE.roadZ], [SITE.doorX, SITE.roadZ], [SITE.doorX, LANE_Z]];
-    case 'roadside': return [[SITE.doorX, SITE.roadZ], [SITE.doorX, LANE_Z]];
+    case 'truck': return [[BAY_X, SITE.roadZ], [TRUCK_AISLE, SITE.roadZ], [TRUCK_AISLE, LANE_Z]];
+    case 'roadside': return [[TRUCK_AISLE, SITE.roadZ], [TRUCK_AISLE, LANE_Z]];
     default: return [[loc.p[0], loc.p[1]], [loc.p[0], LANE_Z]];
   }
 }
@@ -1548,19 +2014,17 @@ function route(from, to) {
 }
 
 const carriers = [];
-const CARRIER_STAND = [[118, 62], [118, 74], [118, 86]];
+// Carriers park just outside the south-west door, close to the pickup pad
+const CARRIER_STAND = [[-101, 62], [-101, 72], [-101, 82]];
 CARRIER_STAND.forEach((stand, i) => {
-  const g = new THREE.Group();
-  const frames = [-1, 1].map((s) => {
-    const c = createStraddleCarrier();
-    c.group.position.x = s * 2.85;
-    c.group.rotation.y = s > 0 ? 0 : Math.PI;
-    g.add(c.group);
-    return c;
-  });
+  // One carrier spans the whole Megapack; loads are tracked separately, so its own cargo stays hidden
+  const sc = createStraddleCarrier();
+  sc.cargo.visible = false;
+  sc.group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  const g = sc.group;
   scene.add(g);
   carriers.push({
-    id: `SC-${i * 2 + 1}/${i * 2 + 2}`, g, frames, x: stand[0], z: stand[1], beam: BEAM.empty,
+    id: `SC-${i + 1}`, g, frames: [sc], x: stand[0], z: stand[1], beam: BEAM.empty,
     load: null, steps: [], stand, loc: { type: 'stand', p: stand }, task: 'Parked',
   });
 });
@@ -1608,7 +2072,7 @@ function assignJob(c) {
         { beam: BEAM.truck },
         { fn: () => { truck.load = c.load; c.load = null; } },
         { beam: BEAM.empty },
-        { go: [[SITE.doorX, SITE.roadZ]] }, // back off the trailer before it pulls away
+        { go: [[TRUCK_AISLE, SITE.roadZ]] }, // back off the trailer before it pulls away
         { fn: () => { truck.state = 'leave'; c.loc = { type: 'roadside' }; c.task = 'Idle'; } },
       ];
       return;
@@ -1669,8 +2133,8 @@ function stepCarriers(dt) {
       }
     }
     c.g.position.set(c.x, 0, c.z);
-    for (const f of c.frames) f.lift.position.y = c.beam;
-    if (c.load) c.load.group.position.set(c.x, c.beam - BEAM_GRIP, c.z);
+    for (const f of c.frames) f.setLift(c.beam);
+    if (c.load) c.load.group.position.set(c.x, c.beam - SC.pickLift, c.z);
   }
 }
 
@@ -1721,32 +2185,115 @@ function stepTrucks(dt) {
 }
 
 // =====================================================================
-// AGVs and workers (ambient life)
+// AGV transport between buffers, staging stock, and workers
 // =====================================================================
-const agvCurve = new THREE.CatmullRomCurve3(
-  [
-    [-70, -12.5], [-56, -10.5], [-40, -9.4], [-31, -7.9], [-24, -8.6], [-24.5, -12.4],
-    [-36, -14.4], [-52, -16.5], [-66, -17], [-74, -15],
-  ].map(([x, z]) => new THREE.Vector3(x, 0, z)),
-  true,
-);
-const agvLen = agvCurve.getLength();
-const agvs = [0, 0.33, 0.66].map((u) => {
-  const a = createAGV();
-  scene.add(a.group);
-  return { ...a, u };
-});
+// Each transport runs AGVs on a fixed route: wait at the pickup until the source has a batch and
+// the destination has room (counting loads already on the way), drive, drop, drive back. A slow
+// or blocked transport starves the station that consumes from its destination.
+const AGV_SPEED = 10; // sim m/s (time is compressed: 1 s = 5 factory minutes)
+const transports = [];
+class Transport {
+  constructor({ name, from, to, batch, route, vehicles = 1 }) {
+    Object.assign(this, { name, from, to, batch });
+    this.pts = route.map(([x, z]) => new THREE.Vector2(x, z));
+    this.cum = [0];
+    for (let i = 1; i < this.pts.length; i++) this.cum.push(this.cum[i - 1] + this.pts[i].distanceTo(this.pts[i - 1]));
+    this.L = this.cum[this.cum.length - 1];
+    this.inTransit = 0;
+    this.trips = 0;
+    this.agvs = Array.from({ length: vehicles }, (_, i) => {
+      const a = createAGV();
+      scene.add(a.group);
+      return { ...a, d: 0, dir: 0, load: 0, wait: i * 1.5 };
+    });
+    transports.push(this);
+  }
+  step(dt) {
+    for (const v of this.agvs) {
+      if (v.wait > 0) {
+        v.wait -= dt;
+        continue;
+      }
+      if (v.dir === 0) {
+        if (this.from.count >= this.batch && this.to.count + this.inTransit + this.batch <= this.to.cap) {
+          this.from.count -= this.batch;
+          this.inTransit += this.batch;
+          v.load = this.batch;
+          v.dir = 1;
+          v.wait = 0.4; // loading
+        }
+      } else if (v.dir === 1) {
+        v.d = Math.min(this.L, v.d + AGV_SPEED * dt);
+        if (v.d >= this.L) {
+          this.to.count += v.load;
+          this.inTransit -= v.load;
+          v.load = 0;
+          v.dir = -1;
+          v.wait = 0.4; // unloading
+          this.trips++;
+        }
+      } else {
+        v.d = Math.max(0, v.d - AGV_SPEED * dt);
+        if (v.d <= 0) v.dir = 0;
+      }
+    }
+  }
+  place() {
+    for (const v of this.agvs) {
+      let i = 1;
+      while (i < this.cum.length - 1 && this.cum[i] < v.d) i++;
+      const a = this.pts[i - 1];
+      const b = this.pts[i];
+      const k = (v.d - this.cum[i - 1]) / (this.cum[i] - this.cum[i - 1] || 1);
+      v.group.position.set(a.x + (b.x - a.x) * k, 0, a.y + (b.y - a.y) * k);
+      v.group.rotation.y = Math.atan2(-(b.y - a.y), b.x - a.x);
+      v.cargo.visible = v.load > 0;
+    }
+  }
+}
+new Transport({ name: 'Trays → Qbert', from: moduleStock, to: qbertIn, batch: 3,
+  route: [[24, MOD_Z + 2.4], [24, -10.6], [37.4, -10.6]] });
+new Transport({ name: 'Stacks → GA', from: stackStock, to: gaStacks, batch: STACKS_PER_PACK,
+  route: [[-3, -3.4], [-3, AISLE_S], [GA_X(2), AISLE_S]] });
+new Transport({ name: 'Thermal → GA', from: thermalOut, to: gaThermal, batch: 1, vehicles: 2,
+  route: [[46, 4.6], [46, AISLE_N], [GA_X(3), AISLE_N]] });
+new Transport({ name: 'Doors → GA', from: doorOut, to: gaDoors, batch: DOOR_SETS_PER_PACK, vehicles: 2,
+  route: [[44, 26.9], [44, AISLE_S], [GA_X(4), AISLE_S]] });
+
+// Staging areas show what each buffer holds
+const stockViews = [];
+function stockView(buffer, proto, spots) {
+  stockViews.push({ buffer, meshes: spots.map(([x, y, z]) => {
+    const m = proto.clone();
+    m.position.set(x, y, z);
+    scene.add(m);
+    return m;
+  }) });
+}
+{
+  const tray = box(1.6, 0.9, 1.2, mat(COLORS.module, { metalness: 0.5, roughness: 0.45 }));
+  const spots = [];
+  for (let l = 0; l < 2; l++) for (const z of [-8.4, -6.6, -4.8]) spots.push([39.6, 0.45 + l * 0.92, z]);
+  stockView(qbertIn, tray, spots);
+  const stackSpots = [];
+  for (const x of [-5.6, -7.9, -10.2]) for (const z of [-9.6, -8.0, -6.4, -4.8]) stackSpots.push([x, 0, z]);
+  stockView(stackStock, STACK_PROTO, stackSpots);
+  stockView(thermalOut, ROOF_PROTO, [0, 1, 2, 3].map((i) => [52, i * 1.25, 4.6]));
+  const doorSpots = [];
+  for (const z of [24.2, 26, 27.8, 29.6]) for (const x of [46.4, 48.6]) doorSpots.push([x, 0, z]);
+  stockView(doorOut, DOOR_PROTO, doorSpots);
+}
 
 const workers = [
-  { z: -5.8, min: -60, max: -10, color: 0xff7a1a },
-  { z: 5.8, min: -40, max: 10, color: 0xf2e21a },
-  { z: -5.8, min: -5, max: 45, color: 0xff7a1a },
-  { z: 5.8, min: 15, max: 50, color: 0x9be22e },
-  { z: 10.5, min: 46, max: 68, color: 0xf2e21a },
-  { z: -10, min: -76, max: -50, color: 0xff7a1a },
-  { z: MOD_Z + 3.0, min: -8, max: 38, color: 0x9be22e },
-  { z: BIW_Z + 5.9, min: 50, max: 92, color: 0xff7a1a },
-  { z: BIW_Z + 4.0, min: -20, max: 34, color: 0xf2e21a },
+  { z: GA_Z - 5.8, min: -60, max: 26, color: 0xff7a1a },
+  { z: GA_Z + 5.8, min: -56, max: 26, color: 0xf2e21a },
+  { z: GA_Z + 5.8, min: -40, max: 10, color: 0x9be22e },
+  { z: PC_Z + 3.4, min: -82, max: -26, color: 0xff7a1a },
+  { z: BIW_Z + 5.9, min: -66, max: -8, color: 0xff7a1a },
+  { z: MOD_Z + 3.0, min: 40, max: 90, color: 0x9be22e },
+  { z: QB_Z + 3.2, min: 2, max: 34, color: 0xf2e21a },
+  { z: TH_Z + 4.0, min: 48, max: 94, color: 0xff7a1a },
+  { z: DOOR_Z - 3.2, min: 56, max: 92, color: 0x9be22e },
 ].map((w) => {
   const group = createWorker(w.color);
   const x = THREE.MathUtils.randFloat(w.min, w.max);
@@ -1769,7 +2316,11 @@ function stepSim(dt) {
   MAIN.step(dt);
   PC.step(dt);
   BIW.step(dt);
+  QBERT.step(dt);
   MODULE.step(dt);
+  THERMAL.step(dt);
+  DOOR.step(dt);
+  for (const t of transports) t.step(dt);
 
   for (const st of stations) {
     if (st.down) {
@@ -1811,9 +2362,9 @@ function stepCrane(dt) {
       break;
     }
     case 'lowerLine':
-      crane.z = toward(crane.z, 0, zSpeed);
-      if (crane.z === 0) crane.hookY = toward(crane.hookY, lineHook, ySpeed);
-      if (crane.z === 0 && crane.hookY === lineHook) {
+      crane.z = toward(crane.z, GA_Z, zSpeed);
+      if (crane.z === GA_Z) crane.hookY = toward(crane.hookY, lineHook, ySpeed);
+      if (crane.z === GA_Z && crane.hookY === lineHook) {
         crane.load = crane.target;
         crane.load.state = 'lifted';
         MAIN.remove(crane.load);
@@ -1829,14 +2380,14 @@ function stepCrane(dt) {
       if (!PAD.unit && !PAD.claimed) crane.state = 'traverse';
       break;
     case 'traverse':
-      crane.z = toward(crane.z, TRUCK_Z, zSpeed);
-      if (crane.z === TRUCK_Z) crane.state = 'lowerPad';
+      crane.z = toward(crane.z, PAD_Z, zSpeed);
+      if (crane.z === PAD_Z) crane.state = 'lowerPad';
       break;
     case 'lowerPad':
       crane.hookY = toward(crane.hookY, padHook, ySpeed);
       if (crane.hookY === padHook) {
         // Swap the detailed model for a single-mesh finished pack for the rest of its trip
-        const fin = { id: crane.load.id, group: createFinishedPack() };
+        const fin = { id: crane.load.id, group: createMegapackUnit() };
         fin.group.position.set(PAD.x, 0, PAD.z);
         scene.add(fin.group);
         scene.remove(crane.load.group);
@@ -1852,8 +2403,8 @@ function stepCrane(dt) {
       if (crane.hookY === high) crane.state = 'return';
       break;
     case 'return':
-      crane.z = toward(crane.z, 0, zSpeed);
-      if (crane.z === 0) crane.state = 'idle';
+      crane.z = toward(crane.z, GA_Z, zSpeed);
+      if (crane.z === GA_Z) crane.state = 'idle';
       break;
   }
 
@@ -1931,6 +2482,7 @@ function updateVisuals(simDt, realDt) {
 
     const e = st.extras;
     const occ = st.status === 'working' || (st.down && st.occupant) ? st.occupant : null;
+    if (e.stock) e.stock.meshes.forEach((m, i) => { m.visible = i < e.stock.buffer.count; });
     switch (st.cfg.id) {
       case 'chassis': {
         const y = occ ? CONV_Y + PACK.BASE + occ.frameDrop + FRAME_H + 0.15 : 6.6;
@@ -1952,6 +2504,8 @@ function updateVisuals(simDt, realDt) {
         break;
       case 'eol':
       case 'b-cmm':
+      case 't-test':
+      case 'd-qc':
         if (!occ) e.scanner.visible = false;
         e.leds.forEach((l, i) => {
           const on = occ ? Math.sin(blink * 9 + i * 1.7) > 0 : i % 3 === 0;
@@ -1964,8 +2518,9 @@ function updateVisuals(simDt, realDt) {
         if (e.fans) e.fans.forEach((f) => { f.rotation.y += realDt * (occ ? 14 : 3); });
         break;
       case 'm-intake':
-      case 'm-test': {
-        const y = occ ? MOD_Y + 0.75 + Math.abs(Math.sin(blink * 3)) * 0.25 : e.headTop;
+      case 'm-test':
+      case 'q-test': {
+        const y = occ ? MOD_Y + (st.cfg.id === 'q-test' ? 1.45 : 0.75) + Math.abs(Math.sin(blink * 3)) * 0.25 : e.headTop;
         e.head.position.y += (y - e.head.position.y) * relax * 3;
         setCable(e.headCable, st.sty.height, e.head.position.y + 0.17);
         e.leds.forEach((l, i) => {
@@ -2009,15 +2564,9 @@ function updateVisuals(simDt, realDt) {
   // Rack shows module trays in stock
   moduleStock.crates.forEach((c, i) => { c.visible = i < moduleStock.count; });
 
+  for (const t of transports) t.place();
+  for (const v of stockViews) v.meshes.forEach((m, i) => { m.visible = i < v.buffer.count; });
   if (!sim.paused) {
-    for (const a of agvs) {
-      a.u = (a.u + (2.6 * simDt) / agvLen) % 1;
-      const p = agvCurve.getPointAt(a.u);
-      const t = agvCurve.getTangentAt(a.u);
-      a.group.position.copy(p);
-      a.group.rotation.y = Math.atan2(-t.z, t.x);
-      a.cargo.visible = a.u > 0.75 || a.u < 0.36;
-    }
     for (const w of workers) {
       if (w.pause > 0) {
         w.pause -= simDt;
@@ -2081,11 +2630,15 @@ function updateVisuals(simDt, realDt) {
 const follow = { active: false, unit: null };
 const tween = { active: false };
 const CAMERA_PRESETS = {
-  overview: { pos: [-34, 64, 96], target: [6, 0, -8] },
-  modules: { pos: [20, 9, -4], target: [6, 1, MOD_Z] },
-  biw: { pos: [92, 13, -11], target: [72, 1.5, BIW_Z] },
-  paint: { pos: [24, 15, -8], target: [6, 2.5, BIW_Z] },
-  shipping: { pos: [34, 16, 40], target: [PICK_X, 3, 8] },
+  overview: { pos: [-20, 92, 112], target: [0, 0, 0] },
+  biw: { pos: [-24, 12, -5], target: [-40, 1.5, BIW_Z] },
+  paint: { pos: [-38, 12, 8], target: [-58, 2.5, PC_Z] },
+  ga: { pos: [-2, 15, 3], target: [-20, 1.5, GA_Z] },
+  modules: { pos: [74, 9, -10], target: [60, 1, MOD_Z] },
+  qbert: { pos: [26, 9, 6], target: [14, 1, QB_Z] },
+  thermal: { pos: [86, 15, 14], target: [70, 1, TH_Z] },
+  doors: { pos: [86, 8, 31], target: [72, 1, DOOR_Z] },
+  shipping: { pos: [PICK_X + 24, 16, 46], target: [PICK_X, 3, 25] },
   lot: { pos: [8, 34, 132], target: [57, 0, 70] },
   site: { pos: [-90, 250, 330], target: [0, 0, 10] },
   parking: { pos: [-196, 20, 34], target: [-158, 0, -14] },
@@ -2216,7 +2769,7 @@ document.querySelectorAll('[data-cam]').forEach((b) =>
     } else {
       const p = CAMERA_PRESETS[mode];
       flyTo(p.pos, p.target);
-      const tabFor = { modules: MODULE, biw: BIW, paint: PC };
+      const tabFor = { modules: MODULE, biw: BIW, paint: PC, ga: MAIN, qbert: QBERT, thermal: THERMAL, doors: DOOR };
       if (tabFor[mode]) showTab(tabFor[mode]);
     }
   }),
@@ -2299,8 +2852,16 @@ function updateUI(force = false) {
   $('k-wip').textContent = wip;
   $('k-fpy').textContent = sim.tested ? `${((sim.firstPass / sim.tested) * 100).toFixed(1)}%` : '—';
   $('k-modules').textContent = `${moduleStock.count} trays`;
-  $('k-modules').dataset.low = moduleStock.count < TRAYS_PER_PACK * 2;
+  $('k-modules').dataset.low = moduleStock.count < STACKS_PER_PACK * 2;
   $('k-frames').textContent = framesReady;
+  // Feeder stock: staging + line-side at GA, in packs' worth
+  const packsOf = (a, b, n) => Math.floor((a.count + b.count) / n);
+  $('k-stacks').textContent = `${stackStock.count + gaStacks.count} · ${packsOf(stackStock, gaStacks, STACKS_PER_PACK)} packs`;
+  $('k-stacks').dataset.low = gaStacks.count < STACKS_PER_PACK;
+  $('k-thermal').textContent = `${thermalOut.count + gaThermal.count}`;
+  $('k-thermal').dataset.low = gaThermal.count < 1;
+  $('k-doors').textContent = `${doorOut.count + gaDoors.count} · ${packsOf(doorOut, gaDoors, DOOR_SETS_PER_PACK)} packs`;
+  $('k-doors').dataset.low = gaDoors.count < DOOR_SETS_PER_PACK;
   const stored = slots.filter((s) => s.unit).length;
   $('k-lot').textContent = `${stored} / ${slots.length}`;
   $('k-lot').dataset.low = stored >= slots.length - 4;
@@ -2388,4 +2949,8 @@ slots.forEach((sl) => { sl.at -= 320; });
 updateUI(true);
 frame();
 document.body.classList.add('ready');
-window.megafactory = { sim, lines, stations, moduleStock, site }; // handy for poking at from the console
+window.megafactory = {
+  sim, lines, stations, transports, carriers, trucks, slots, crane, PAD, site, step: stepSim,
+  camera, controls, presets: CAMERA_PRESETS,
+  buffers: { moduleStock, qbertIn, stackStock, gaStacks, thermalOut, gaThermal, doorOut, gaDoors },
+}; // handy for poking at from the console

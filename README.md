@@ -9,7 +9,7 @@ in the browser.
 | `index.html` | Demo hub |
 | `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
 | `battery-line.html` | **Prismatic Module & Pack Line**: a running module line → pack line → outbound yard with a straddle carrier, built from the battery objects in the library |
-| `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
+| `megafactory.html` | Megafactory Line Simulator: BIW → powder coat → GA, fed by modules, Qbert, thermal and door lines, modelled on Tesla's Lathrop plant |
 | `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
 | `capture.html` | Phone capture for the photo → 3D model pipeline (needs `node tools/capture-server.mjs`, see [Photo → 3D model](#photo--3d-model-img2threejs)) |
 | `factory-builder/` | **Sim Factory Builder**: import your own layout (image, PDF or DXF), build the twin from a reusable library, draw AGV routes, staff stations and simulate (React + Vite, see [its README](factory-builder/README.md); a prebuilt copy is at `factory-builder/dist/`) |
@@ -120,22 +120,46 @@ All figures are illustrative and simulated. This demo is not affiliated with or 
 A real-time 3D simulation of a utility-scale battery pack production line, inspired by
 Tesla's Megafactory (Lathrop, CA). Open `megafactory.html`.
 
-![stations](https://img.shields.io/badge/stations-23-e82127) ![lines](https://img.shields.io/badge/lines-4-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
+![stations](https://img.shields.io/badge/stations-35-e82127) ![lines](https://img.shields.io/badge/lines-7-e82127) ![three.js](https://img.shields.io/badge/three.js-r160-black)
+
+## Plant layout
+
+North is at the top of the overview (the wall with the MEGAFACTORY sign). The main product flows in
+an S through the west half of the building, from the north-west corner to the south-west corner.
+The feeder lines fill the east half.
+
+```
+            WEST                                                   EAST
+ north  ┌──────────────────────────────────────┬──────────────────────────────────┐
+        │ Body in White ◄── steel coils        │ module racks ◄── Battery Modules │
+        │   │ (frames flow west)               │      │ AGV                       │
+ middle │   ▼ Powder Coat ──────────────────► rail ─► Qbert (stacks)   Thermal System
+        │   (overhead: down the west wall, then  │      │ AGV               │ AGV   │
+        │    east through wash, booth, oven)     ▼      ▼                   ▼       │
+ aisle  │ ═══════════════ main AGV aisle (stacks, thermal systems, door sets) ════ │
+ south  │ crane ◄── General Assembly ◄──────── Chassis Load       Door Assembly    │
+        └──┬───────────────────────────────────────────────────────────────────────┘
+           │ south-west door
+           ▼ straddle carriers ──► storage lot ──► outbound trucks
+```
 
 ## What's simulated
 
-Four connected lines share one flow engine. Each station holds one unit, and units keep a minimum
+Seven connected lines share one flow engine. Each station holds one unit, and units keep a minimum
 spacing, so a slow or broken station leaves the stations after it with no work (**Starved**) and
-makes the ones before it wait (**Blocked**). Lines hand units to each other, so a problem upstream
-works its way through the plant.
+makes the ones before it wait (**Blocked**). Lines hand units to each other, and buffers sit between
+the feeders and General Assembly (GA):
 
-```
-Body in White ──► Powder Coat (overhead conveyor) ──► Pack line ──► Crane ──► Pickup pad
-                                                                                  │ straddle carriers
-                                                       Outbound trucks ◄── Storage lot ◄┘
-                                                         ▲
-Battery Modules ──► Rack warehouse ──► AGVs ─────────────┘ (4 trays per pack)
-```
+| Buffer | Filled by | Emptied by |
+|---|---|---|
+| Module racks (48 trays) | Battery Modules | AGV to Qbert's infeed (3 trays a trip) |
+| Stack staging (12) → GA line-side (8) | Qbert | AGV to Stack Install (4 stacks a trip) |
+| Thermal staging (4) → GA line-side (2) | Thermal System | 2 AGVs to Thermal Install (1 each) |
+| Door staging (12) → GA line-side (8) | Door Assembly | 2 AGVs to Enclosure & Doors (4 sets a trip) |
+
+The AGVs are part of the flow: they only pick up when the destination has room, so a slow AGV
+route starves the GA station it feeds. Line-side stock at GA and the staging areas show what each
+buffer holds.
 
 ### Modelled on the Lathrop Megafactory video
 
@@ -144,19 +168,17 @@ The look and process details follow Tesla's *Meet Megafactory* video of the Lath
 - Bright white building with a white column grid (with grid labels like G13), polished concrete floor,
   open steel roof joists and dense LED high-bays. The roof hides when you orbit above it.
 - Yellow 6-axis robots. Body-in-White welding happens inside red translucent welding-curtain cells
-  with red fixtures and welders. Yellow bridge cranes with blue hoists run over the pack line and BIW.
+  with red fixtures and welders. Yellow bridge cranes with blue hoists run over GA and BIW.
 - Paint shop on a blue overhead conveyor: a stainless wash tunnel with nozzle risers spraying water,
   and a booth lit by tall light panels.
-- On the pack line, packs ride low floor rails and the work is mostly manual. Technicians build an
-  orange HV busbar spine first; operators then use lift-assist arms to slide orange-faced modules
-  in from both sides. Doors swing shut as they're hung, and the thermal roof has two rows of fans
-  and side louvres.
-- The module line has silver aluminium guarding and light curtains, and a robot with a red gripper
-  places the green BMS boards.
-- Takt is calibrated to the video's "1 Megapack every 68 minutes". Finished units are staged in a yard
-  outside the east wall.
+- In GA, packs ride low floor rails and the work is mostly manual. Technicians build an orange HV
+  busbar spine first; operators then use lift-assist arms to set the battery stacks in from both
+  sides. Doors swing shut as they're hung, and the thermal system has two rows of fans and side
+  louvres.
+- The module, Qbert and door lines have silver aluminium guarding and light curtains.
+- Takt is calibrated to the video's "1 Megapack every 68 minutes".
 
-### Body in White (back of plant)
+### Body in White (north-west, flows west)
 | # | Station | What happens |
 |---|---------|--------------|
 | 01 | Base Frame Weld | Robots weld roll-formed rails into the base frame |
@@ -171,12 +193,28 @@ The look and process details follow Tesla's *Meet Megafactory* video of the Lath
 | 02 | Pre-treatment Wash | Degrease and conversion coat (spray mist) |
 | 03 | Powder Booth | Spray robots coat the frame white |
 | 04 | Cure Oven | Powder cures at ~200 °C (frame glows while inside) |
-| 05 | Cool & Inspect | Fans cool the frame, then it rides the rail across the plant |
+| 05 | Cool & Inspect | Fans cool the frame, then it rides the rail over to GA |
 
-The rail climbs over the warehouse and drops coated frames straight onto the pack line's Chassis Load station.
-Frames waiting on the rail act as the buffer.
+The rail runs west to the wall, south, then east through the paint stations. It climbs over the
+Qbert area and drops coated frames straight onto GA's Chassis Load station. Frames waiting on the
+rail act as the buffer.
 
-### Battery Modules
+### General Assembly (south, flows west to the shipping crane)
+| # | Station | What happens |
+|---|---------|--------------|
+| 01 | Chassis Load | Coated frame is lowered off the paint rail onto a steel skid |
+| 02 | HV Busbar & Harness | Technicians build the orange HV busbar spine down the centre |
+| 03 | Stack Install | Lift-assist arms set 4 battery stacks (48 modules) from Qbert |
+| 04 | Thermal Install | Hoist sets the thermal system from the Thermal line, plus the power electronics |
+| 05 | Enclosure & Doors | 16 doors (4 door sets) are hung and swing shut, then the end caps go on |
+| 06 | Coolant Fill | Hose drops in, coolant loop is filled and leak-checked |
+| 07 | End-of-Line Test | Scanner sweeps the pack; ~6% fail and are re-tested |
+| 08 | Final QA | Inspection arch, release to shipping |
+
+A gantry crane then sets each finished pack on a pickup pad by the south-west door. From the crane
+on, a finished pack is the captured Megapack 2 XL model from `models/captured/megapack-2xl`.
+
+### Battery Modules (north-east, flows west)
 | # | Station | What happens |
 |---|---------|--------------|
 | 01 | Cell Intake & Test | Cells are scanned and tested; a tray is indexed onto the line |
@@ -186,23 +224,32 @@ Frames waiting on the rail act as the buffer.
 | 05 | Module Lid & BMS Board | Robot with a red gripper places lids and green BMS boards |
 | 06 | Module EOL Test | Isolation and BMS checks; ~3% re-tested |
 
-Finished trays (12 modules each) go into the rack warehouse. Each crate on the racks is one tray in
-stock, up to 56. When the racks are full the module line backs up. The pack line's Module Install
-station takes 4 trays (48 modules) per pack and is starved if stock runs out.
+Finished trays (12 modules each) go into the module racks. Each crate on the racks is one tray in
+stock, up to 48. When the racks are full the module line backs up.
 
-### Pack line
+### Qbert (middle, flows west): modules into battery stacks
 | # | Station | What happens |
 |---|---------|--------------|
-| 01 | Chassis Load | Coated frame is lowered off the paint rail onto a steel skid |
-| 02 | HV Busbar & Harness | Technicians build the orange HV busbar spine down the centre |
-| 03 | Module Install | AGVs bring trays; lift-assist arms slide 48 modules in from both sides |
-| 04 | Thermal & Inverter | Hoist sets the thermal roof with fans and power electronics |
-| 05 | Enclosure & Doors | 16 doors are hung and swing shut, then the end caps go on |
-| 06 | Coolant Fill | Hose drops in, coolant loop is filled and leak-checked |
-| 07 | End-of-Line Test | Scanner sweeps the pack; ~6% fail and are re-tested |
-| 08 | Final QA | Inspection arch, release to shipping |
+| 01 | Tray Infeed | A robot de-stacks a tray and sets the first layer of modules on a stack base |
+| 02 | Qbert Stacking | Two robots stack the rest, layer by layer, into a 4 × 3 block |
+| 03 | Compress & Strap | The stack is compressed and strapped; the copper busbar goes on top |
+| 04 | Stack HV Test | Isolation, voltage and BMS checks; ~3% re-tested |
 
-A gantry crane then sets each finished pack on a pickup pad inside the building.
+### Thermal System (middle east, flows west)
+| # | Station | What happens |
+|---|---------|--------------|
+| 01 | Chiller & Pump Frame | Chillers, pump and controller are bolted onto the thermal frame |
+| 02 | Refrigerant Brazing | A robot brazes the copper refrigerant lines (sparks) |
+| 03 | Roof & Fans | The roof shell goes on and the ten condenser fans are fitted |
+| 04 | Thermal Run Test | Flow, pressure, fan and leak checks; ~4% re-tested |
+
+### Door Assembly (south east, flows west)
+| # | Station | What happens |
+|---|---------|--------------|
+| 01 | Door Panel Load | Four door panels are loaded upright on a door cart |
+| 02 | Hinges & Latches | A robot fits hinges and three-point latches |
+| 03 | Gasket & Seal | A robot lays the weather gasket round each door |
+| 04 | Door Inspection | Vision arch checks gasket and latches; ~2% re-tested |
 
 ### Site, storage lot and outbound logistics
 
@@ -219,20 +266,21 @@ The site layout follows the MFTX aerial view:
 
 Finished packs move like this:
 
-1. **Three tandem pairs of red straddle carriers** (six machines, styled on the units in the site
-   photos) pick each pack up from the pad and carry it out through the south door. They drive
-   crab-style down the lot's aisles and set it in a free slot (60 slots).
-2. **Outbound flatbed trucks** arrive on the south road and stop at the loading bay. A carrier pair
-   brings the oldest stored pack and lowers it onto the trailer, and the truck leaves. A pack counts
-   as shipped when its truck leaves the site.
+1. **Three red straddle carriers**, each as long as a Megapack (the model in `src/battery/models.js`),
+   wait outside the south-west door. One picks each pack up from the pad, carries it out through the
+   door and along the lot's cross lane, and sets it in a free slot (60 slots).
+2. **Outbound flatbed trucks** arrive on the south road and stop at the loading bay. A carrier brings
+   the oldest stored pack down the lot's middle aisle, straddles the trailer and lowers the pack onto
+   it, and the truck leaves. A pack counts as shipped when its truck leaves the site.
 3. **Truck bookings follow stock:** more trucks come when the lot is above 40 packs, fewer when it
    drops below 12.
 
-If the lot fills up, the pad stays occupied, the crane has to wait and the pack line backs up.
+If the lot fills up, the pad stays occupied, the crane has to wait and GA backs up.
 
-**Time scale**: 1 simulated second = 5 factory minutes. The pack line's End-of-Line test is the
-plant bottleneck, giving a takt of about 68 minutes per pack, the figure quoted in the Megafactory
-video. At ~3.9 MWh per pack that is roughly a 30 GWh/year run-rate before downtime. The feeder lines run a little faster, so they fill
+**Time scale**: 1 simulated second = 5 factory minutes. GA's End-of-Line test is the plant
+bottleneck, giving a takt of about 67 minutes per pack with faults off (about 73 with random
+faults), close to the 68 minutes quoted in the Megafactory video. At ~3.9 MWh per pack that is
+roughly a 30 GWh/year run-rate before downtime. The feeder lines run a little faster, so they fill
 their buffers and then wait.
 
 ## Prismatic battery module & pack line
@@ -350,7 +398,8 @@ photo are approximate: sides the camera didn't see are guessed.
 - **Line tabs** in the station panel switch between the four lines; a red dot marks a line with a fault
 - **Random faults** — toggle random station breakdowns
 
-`window.megafactory` exposes `{ sim, lines, stations, moduleStock }` in the browser console for poking at the model.
+`window.megafactory` exposes `{ sim, lines, stations, transports, buffers, carriers, trucks, crane, step }` in
+the browser console for poking at the model (`step(dt)` advances the simulation by `dt` sim seconds).
 
 ## Project layout
 
@@ -373,7 +422,7 @@ src/builder/     Line Builder object library, flow engine and editor; captured.j
 src/capture/     capture page script and styles
 src/battery/     prismatic battery line: models.js (stations, cell/module/pack at every stage, racks,
                  straddle carrier), line.js (layout, flow simulation, yard, camera)
-src/main.js      plant layout, shared line engine, the four lines, crane & trucks, camera, UI
+src/main.js      plant layout, shared line engine, the seven lines, AGV transports, crane, carriers & trucks, camera, UI
 src/cars.js      Model Y / Model 3 car models (instanced) and parking-lot driving
 src/site.js      exterior site: roads, parking lots and cars, office, substation, docks, trailers, landscaping
 src/models.js    procedural meshes: pack, frame, module tray, paint carrier, robot, lift-assist, truck, AGV, worker, straddle carrier, trailer, yard vehicles

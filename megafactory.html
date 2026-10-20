@@ -11,7 +11,8 @@
     {
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
       }
     }
   </script>
@@ -24,7 +25,7 @@
     <div class="brand-mark"></div>
     <div>
       <h1>Megafactory <span>Line 1</span></h1>
-      <p>Body in White · Powder Coat · Modules · Pack assembly</p>
+      <p>BIW → Powder Coat → General Assembly · Modules · Qbert · Thermal · Doors</p>
     </div>
   </header>
 
@@ -38,6 +39,9 @@
     <div class="kpi"><label>First-pass yield</label><b id="k-fpy">—</b></div>
     <div class="kpi"><label>Module stock</label><b id="k-modules">—</b></div>
     <div class="kpi"><label>Coated frames</label><b id="k-frames">—</b></div>
+    <div class="kpi"><label>Qbert stacks</label><b id="k-stacks">—</b></div>
+    <div class="kpi"><label>Thermal systems</label><b id="k-thermal">—</b></div>
+    <div class="kpi"><label>Door sets</label><b id="k-doors">—</b></div>
     <div class="kpi"><label>Storage lot</label><b id="k-lot">—</b></div>
     <div class="kpi"><label>Outbound trucks</label><b id="k-trucks">—</b></div>
     <div class="kpi wide"><label>Bottleneck</label><b id="k-bottleneck">—</b></div>
@@ -86,9 +90,13 @@
     <div class="group">
       <button class="btn active" data-cam="overview">Overview</button>
       <button class="btn" data-cam="follow">Follow pack</button>
-      <button class="btn" data-cam="modules">Module line</button>
       <button class="btn" data-cam="biw">Body in White</button>
       <button class="btn" data-cam="paint">Powder coat</button>
+      <button class="btn" data-cam="ga">General Assembly</button>
+      <button class="btn" data-cam="modules">Modules</button>
+      <button class="btn" data-cam="qbert">Qbert</button>
+      <button class="btn" data-cam="thermal">Thermal</button>
+      <button class="btn" data-cam="doors">Doors</button>
       <button class="btn" data-cam="shipping">Crane</button>
       <button class="btn" data-cam="lot">Storage lot</button>
       <button class="btn" data-cam="parking">Parking</button>

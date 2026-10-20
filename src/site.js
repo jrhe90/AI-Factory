@@ -8,8 +8,9 @@ import {
 import { CarTraffic } from './cars.js';
 
 export const SITE = {
-  doorX: 57, // south door used by the straddle carriers
-  doorHalf: 5.5,
+  doorX: -76, // south-west door used by the straddle carriers (in front of the shipping crane)
+  doorHalf: 6.5, // a carrier spans a Megapack's length plus its legs (~10.4 m)
+  doorH: 9.6, // and stands 7.8 m tall with a beacon on top
   wallZ: 34.4,
   roadZ: 100, // outbound truck road (south)
   blvdZ: -77, // boulevard (north)
@@ -285,12 +286,12 @@ export function buildSite(scene) {
   // Carrier door frame
   const frameMat = mat(0x2b2f35, { metalness: 0.5 });
   for (const x of [d, e]) {
-    const post = box(0.5, 6.5, 0.5, frameMat);
-    post.position.set(x, 3.25, SITE.wallZ + 0.2);
+    const post = box(0.5, SITE.doorH, 0.5, frameMat);
+    post.position.set(x, SITE.doorH / 2, SITE.wallZ + 0.2);
     scene.add(post);
   }
   const header = box(e - d + 0.5, 0.6, 0.5, frameMat);
-  header.position.set(SITE.doorX, 6.5, SITE.wallZ + 0.2);
+  header.position.set(SITE.doorX, SITE.doorH, SITE.wallZ + 0.2);
   scene.add(header);
   const doorXs = [];
   for (let x = -99.5 + 2.1; x < 99.5; x += 4.2) if (x < d - 2 || x > e + 2) doorXs.push(x);
