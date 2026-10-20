@@ -934,8 +934,13 @@ export function createBatteryRack(kind = 'cells', bays = 3, levels = 4) {
 // Straddle carrier for finished battery containers (Megapack-style units in shrink wrap): a red
 // portal frame on four wheels; hoists on the top frame lower a spreader between the legs that
 // picks the unit up from above, so units can be carried over a row and stacked two high.
-// setLift(h) puts the spreader at h (m); setLoaded(b) shows the unit and drops to travel height.
-export const CARRIER = { len: 3.6, half: 1.35, H: 6.2, load: { L: 3.2, W: 1.75, H: 2.5 } };
+// setLift(h) puts the spreader at h (m); setLoaded(b) shows the unit and lifts it to travel height,
+// high enough to carry it over a unit standing on the ground.
+export const CARRIER = { len: 3.6, half: 1.35, H: 7.2, load: { L: 3.2, W: 1.75, H: 2.5 }, clearance: 0.35 };
+const GRIP = 0.55; // spreader to the top of the unit it holds
+CARRIER.pickLift = CARRIER.load.H + GRIP; // spreader height with the unit on the ground
+CARRIER.travelLift = 2 * CARRIER.load.H + CARRIER.clearance + GRIP; // unit bottom clears a parked unit
+CARRIER.parkedLift = CARRIER.H - 0.9; // empty spreader, clear of everything below
 // Shrink-wrapped battery unit on a steel skid, as the carrier moves it (L along x)
 export function createWrappedUnit() {
   const U = CARRIER.load;
@@ -999,7 +1004,7 @@ export function createStraddleCarrier({ color = 0xd3202c } = {}) {
   spreader.add(mergeColored(sp));
   const cargo = new THREE.Group();
   cargo.add(createWrappedUnit());
-  cargo.position.y = -0.55 - U.H;
+  cargo.position.y = -GRIP - U.H;
   spreader.add(cargo);
   g.add(spreader);
   const ropes = [];
@@ -1012,13 +1017,12 @@ export function createStraddleCarrier({ color = 0xd3202c } = {}) {
       r.position.y = (top + h) / 2;
     }
   };
-  const travel = 0.4 + U.H + 0.55; // unit bottom 0.4 m off the ground
-  setLift(travel);
+  setLift(CARRIER.travelLift);
   return {
     group: g, cargo, spreader, setLift,
     setLoaded(b) {
       cargo.visible = b;
-      setLift(b ? travel : H - 0.9);
+      setLift(b ? CARRIER.travelLift : CARRIER.parkedLift);
     },
   };
 }

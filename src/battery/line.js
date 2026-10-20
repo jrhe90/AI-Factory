@@ -169,10 +169,9 @@ export function startBatteryLine(container, { onTick } = {}) {
   carrier.group.add(ctag);
   carrier.setLoaded(false);
   // Carrier job: drive to pad, lower, grip, lift, drive to a free slot (via the cross aisle), lower, release
-  const job = { steps: [], i: 0, t: 0, lift: CARRIER.H - 0.9, loaded: false, waiting: true };
-  const travelLift = 0.4 + CARRIER.load.H + 0.55;
-  const pickLift = CARRIER.load.H + 0.55;
-  const AISLE_X = -20.5;
+  const { travelLift, pickLift, parkedLift } = CARRIER;
+  const job = { steps: [], i: 0, t: 0, lift: parkedLift, loaded: false, waiting: true };
+  const AISLE_X = -19.5; // cross aisle, clear of the nearest yard slot
   function planJob() {
     let slot = yard.rows.findIndex((u) => !u.visible);
     if (slot < 0) {
@@ -185,7 +184,7 @@ export function startBatteryLine(container, { onTick } = {}) {
       { drive: [AISLE_X, p.z] }, { drive: [AISLE_X, yard.pad.z] }, { drive: [yard.pad.x, yard.pad.z] },
       { lift: pickLift }, { grip: true }, { lift: travelLift },
       { drive: [AISLE_X, yard.pad.z] }, { drive: [AISLE_X, target.z] }, { drive: [target.x, target.z] },
-      { lift: pickLift }, { release: slot }, { lift: CARRIER.H - 0.9 },
+      { lift: pickLift }, { release: slot }, { lift: parkedLift },
     ];
     job.i = 0;
     job.waiting = false;
