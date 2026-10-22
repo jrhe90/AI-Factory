@@ -8,6 +8,7 @@ in the browser.
 |------|------------|
 | `index.html` | Demo hub |
 | `motors.html` | **Electric Motor Plant**: an AI digital twin modelled on ABB's Baldor-Reliance motor manufacturing |
+| `motors.html?tv` | **Production-office TV view** of the motor plant: a fixed high-level 3D view with problem zones lit up, shift KPIs and a needs-attention list, for a 40" screen read from 3–5 m |
 | `megafactory.html` | Megafactory Line Simulator: battery packs, modelled on Tesla's Lathrop plant |
 | `builder.html` | Line Builder: generic FlexSim-style objects and a layout editor |
 | `capture.html` | Phone capture for the photo → 3D model pipeline (needs `node tools/capture-server.mjs`, see [Photo → 3D model](#photo--3d-model-img2threejs)) |
@@ -109,6 +110,25 @@ Shipping, Follow motor and a looping **Tour**. `window.motorPlant` exposes the m
 console (`motorPlant.snapshot()`, `motorPlant.advance(seconds)`, `motorPlant.jump('assembly')`).
 
 All figures are illustrative and simulated. This demo is not affiliated with or endorsed by ABB.
+
+### TV view (production office)
+
+Open `motors.html?tv` (or `motors.html#tv`) on the office TV and press **Full screen** (move the
+mouse to show the controls). It is sized to be read on a 40" screen from 3–5 m and answers one
+question: are we on plan right now, and if not, where is the problem?
+
+- **Top band:** shift output against plan so far, the current rate, OEE and first-pass yield, each
+  with an OK / Behind / Low chip.
+- **3D plant, fixed bird's-eye view:** areas stay as they are while running. A stopped station
+  turns its area red with a pulsing beacon and a red tag naming the station; AI alerts and
+  maintenance turn it amber.
+- **Live close-up:** while anything is stopped, a corner camera shows the stopped machine
+  (rotating between stoppages every 10 s).
+- **Needs attention:** at most four items, worst first (stoppages with minutes down, AI failure
+  predictions, low stock), then **output by hour** against the 50/h plan.
+
+The view reads the same model as the full twin (`snapshot()` and the station states), so it shows
+the twin's figures. Code: `src/motors/tv.js` and `src/motors/tv.css`.
 
 ---
 

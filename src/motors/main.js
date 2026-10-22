@@ -2000,7 +2000,7 @@ document.body.classList.add('ready');
 setTimeout(() => toast('Welcome — this is a live digital twin. Click any station, or ask the AI Copilot.'), 600);
 window.motorPlant = {
   sim, lines, stations, stock, ai, snapshot, setCam, tugger, trucks, fgSlots, techs, renderer, camera, controls,
-  scene,
+  scene, plant, breakStation,
   advance(sec) { for (let i = 0; i < sec * 10; i++) stepSim(0.1); updateVisuals(0, 0.016); updateUI(true); },
   jump(name) {
     const p = CAMS[name];
