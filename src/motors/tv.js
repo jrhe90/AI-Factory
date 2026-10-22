@@ -1,7 +1,8 @@
 // Production-office TV view of the motor plant twin: open motors.html?tv (or motors.html#tv).
-// One fixed, high-level 3D view of the whole plant with problem zones lit up in the scene, four
-// shift KPIs, a short "needs attention" list, output by hour, and a live close-up of the worst
-// stoppage. Sized to be read on a 40" screen from 3–5 m; the normal UI is hidden.
+// A high-level 3D view of the whole plant with problem zones lit up in the scene, four shift KPIs,
+// a short "needs attention" list, output by hour, and a live 3D camera in the corner. The camera
+// sways slowly so the view reads as 3D, not a floor plan (add &still to stop it). Sized to be read
+// on a 40" screen from 3–5 m; the normal UI is hidden.
 import * as THREE from 'three';
 import { PLAN_RATE, FACTORY_SEC } from './main.js';
 
@@ -24,8 +25,14 @@ const ZONES = [
   { id: 'rewind', name: 'Rewinding', lines: ['rewind'] },
 ];
 const COLOR = { crit: 0xff5b52, warn: 0xf2aa3c };
+// Slow swing around the plant: enough parallax to show depth, slow enough to read tags while it moves
+const SWAY = { yaw: 0.18, period: 90 };
+// What the corner camera circles while nothing is stopped
+const SHOWCASE = [['asmA', 'Vision QC (AI)'], ['stator', 'VPI Impregnation'], ['press', 'Lamination Stamping'], ['asmB', 'Run Test']];
 
-const wanted = new URLSearchParams(location.search).has('tv') || location.hash === '#tv';
+const params = new URLSearchParams(location.search);
+const wanted = params.has('tv') || location.hash === '#tv';
+const still = params.has('still') || matchMedia('(prefers-reduced-motion: reduce)').matches;
 if (wanted && window.motorPlant) startTV(window.motorPlant);
 
 function startTV(mp) {
@@ -36,7 +43,7 @@ function startTV(mp) {
   font.href = 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap';
   document.head.appendChild(font);
 
-  // A dark wall screen with a fixed bird's-eye view: nothing to orbit, nothing moves but the plant
+  // A dark wall screen with a bird's-eye view that no one has to drive
   scene.background = new THREE.Color(0x0d1317);
   scene.fog = null;
   plant.labels.visible = false;
@@ -58,15 +65,15 @@ function startTV(mp) {
     <header class="tv-top">
       <div class="tv-bar">
         <div class="tv-brand"><span class="tv-mark"></span><b>Motor Plant</b><span id="tv-shift"></span></div>
-        <div class="tv-clock"><span class="tv-live"><i></i>LIVE</span><span id="tv-clock"></span></div>
+        <div class="tv-clock"><span class="tv-live"><i></i>LIVE 3D TWIN</span><span id="tv-clock"></span></div>
       </div>
       <div class="tv-kpis">
         ${kpi('out', 'Shift output', 'motors')}${kpi('rate', 'Rate now', '/h')}${kpi('oee', 'OEE', '%')}${kpi('fpy', 'First-pass yield', '%')}
       </div>
     </header>
     <div id="tv-zones"></div>
-    <div id="tv-pip" hidden>
-      <div class="tv-pip-head"><small>LIVE</small><span id="tv-pip-title"></span></div>
+    <div id="tv-pip">
+      <div class="tv-pip-head"><small>LIVE 3D</small><span id="tv-pip-title"></span></div>
       <div id="tv-pip-view"></div>
     </div>
     <aside class="tv-side">
@@ -297,7 +304,6 @@ function startTV(mp) {
     const x = ((v.x + 1) / 2) * window.innerWidth, y = ((1 - v.y) / 2) * window.innerHeight;
     el.style.transform = `translate(${x}px, ${y}px) translate(-50%, ${below ? '0' : '-100%'})`;
     el.style.visibility = '';
-    if (pip.el.hidden) return;
     const r = pip.el.getBoundingClientRect(), t = el.getBoundingClientRect();
     if (t.right > r.left && t.left < r.right && t.bottom > r.top && t.top < r.bottom) el.style.visibility = 'hidden';
   }
@@ -322,23 +328,43 @@ function startTV(mp) {
     }
   }
 
-  // Close-up of the longest stoppage, rotating between stoppages every 10 s
+  // Main camera: swing slowly around the target. Runs after the frame is drawn and tags are placed,
+  // so the tags always match the picture on screen.
+  const orbit = new THREE.Vector3(...VIEW.pos).sub(new THREE.Vector3(...VIEW.target));
+  const up = new THREE.Vector3(0, 1, 0);
+  function sway(t) {
+    if (still) return;
+    const a = SWAY.yaw * Math.sin((t * 2 * Math.PI) / SWAY.period);
+    camera.position.copy(orbit).applyAxisAngle(up, a).add(controls.target);
+    camera.lookAt(controls.target);
+  }
+
+  // Corner camera: a close-up of the longest stoppage (rotating between stoppages every 10 s), or,
+  // while nothing is stopped, a slow circle around one showcase machine after another.
+  const showcase = SHOWCASE.map(([id, name]) => lineById[id]?.stations.find((st) => st.cfg.name === name)).filter(Boolean);
   const pip = { el: $('tv-pip'), view: $('tv-pip-view'), st: null, t: 0, cam: new THREE.PerspectiveCamera(38, 16 / 9, 0.3, 400) };
-  function updatePip(dt) {
+  function updatePip(dt, time) {
     const crit = stations.filter(stopped).sort((a, b) => downMin(b) - downMin(a));
+    const pool = crit.length ? crit : showcase;
     pip.t += dt;
-    if (!crit.includes(pip.st) || pip.t > 10) {
+    if (!pool.includes(pip.st) || pip.t > (crit.length ? 10 : 15)) {
       pip.t = 0;
-      pip.st = crit.length ? crit[(crit.indexOf(pip.st) + 1) % crit.length] : null;
+      pip.st = pool[(pool.indexOf(pip.st) + 1) % pool.length] ?? null;
     }
-    pip.el.hidden = !pip.st;
     if (!pip.st) return;
-    $('tv-pip-title').textContent = `${where(pip.st)} · stopped ${downMin(pip.st)} min`;
+    const isStop = stopped(pip.st);
+    pip.el.dataset.s = isStop ? 'crit' : 'ok';
+    $('tv-pip-title').textContent = isStop ? `${where(pip.st)} · stopped ${downMin(pip.st)} min` : where(pip.st);
     const r = pip.view.getBoundingClientRect();
     if (r.width < 10) return;
-    // Steep enough to look over the neighbouring line, which sits only ~6 m away on the east lines
     const g = pip.st.group.position;
-    pip.cam.position.set(g.x - 2, 10, g.z + 6.5);
+    if (isStop) {
+      // Steep enough to look over the neighbouring line, which sits only ~6 m away on the east lines
+      pip.cam.position.set(g.x - 2, 10, g.z + 6.5);
+    } else {
+      const a = time * 0.15;
+      pip.cam.position.set(g.x + Math.cos(a) * 7.5, 5.5, g.z + Math.sin(a) * 7.5);
+    }
     pip.cam.lookAt(g.x, 0.8, g.z);
     pip.cam.aspect = r.width / r.height;
     pip.cam.updateProjectionMatrix();
@@ -366,7 +392,8 @@ function startTV(mp) {
     panelT += dt;
     if (panelT >= 0.5) { panelT = 0; renderPanels(); }
     updateScene(now / 1000);
-    updatePip(dt);
+    updatePip(dt, now / 1000);
+    sway(now / 1000);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

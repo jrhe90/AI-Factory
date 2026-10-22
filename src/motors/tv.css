@@ -122,15 +122,17 @@ body.tv .panel, body.tv #feed, body.tv #toasts, body.tv #disclaimer { display: n
 /* ---------- live close-up of the worst stoppage ---------- */
 #tv-pip {
   position: absolute; left: calc(var(--u) * 3); bottom: calc(var(--u) * 2.4);
-  width: calc(var(--u) * 46); border: 3px solid var(--tv-crit); border-radius: calc(var(--u) * 0.8); overflow: hidden;
+  width: calc(var(--u) * 46); border: 3px solid var(--tv-accent); border-radius: calc(var(--u) * 0.8); overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 .tv-pip-head {
-  display: flex; gap: calc(var(--u) * 1); align-items: center; background: var(--tv-crit); color: #fff;
+  display: flex; gap: calc(var(--u) * 1); align-items: center; background: var(--tv-accent); color: #fff;
   font-size: calc(var(--u) * 2.3); font-weight: 600; padding: calc(var(--u) * 0.5) calc(var(--u) * 1.2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tv-pip-head small { font-size: 0.85em; letter-spacing: 0.12em; font-weight: 700; opacity: 0.85; }
+#tv-pip[data-s='crit'] { border-color: var(--tv-crit); }
+#tv-pip[data-s='crit'] .tv-pip-head { background: var(--tv-crit); }
 #tv-pip-view { aspect-ratio: 16 / 9; }
 
 /* ---------- controls, shown on mouse move ---------- */

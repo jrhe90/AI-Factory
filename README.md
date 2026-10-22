@@ -119,11 +119,13 @@ question: are we on plan right now, and if not, where is the problem?
 
 - **Top band:** shift output against plan so far, the current rate, OEE and first-pass yield, each
   with an OK / Behind / Low chip.
-- **3D plant, fixed bird's-eye view:** areas stay as they are while running. A stopped station
-  turns its area red with a pulsing beacon and a red tag naming the station; AI alerts and
-  maintenance turn it amber.
-- **Live close-up:** while anything is stopped, a corner camera shows the stopped machine
-  (rotating between stoppages every 10 s).
+- **3D plant, bird's-eye view:** areas stay as they are while running. A stopped station turns
+  its area red with a pulsing beacon and a red tag naming the station; AI alerts and maintenance
+  turn it amber. The camera swings slowly (about 10° either way over 90 s) so the view reads as
+  live 3D rather than a floor plan; add `&still` to the URL to hold it fixed.
+- **Live 3D camera (corner):** while nothing is stopped it circles one showcase machine after
+  another (Vision QC, VPI, press, run test) under a blue *LIVE 3D* header. When a station stops it
+  turns red and shows the stopped machine, rotating between stoppages every 10 s.
 - **Needs attention:** at most four items, worst first (stoppages with minutes down, AI failure
   predictions, low stock), then **output by hour** against the 50/h plan.
 
