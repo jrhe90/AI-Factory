@@ -25,6 +25,10 @@ const ZONES = [
   { id: 'rewind', name: 'Rewinding', lines: ['rewind'] },
 ];
 const COLOR = { crit: 0xff5b52, warn: 0xf2aa3c };
+// The plant is drawn almost grey so that red and amber are the only strong colours on screen
+const MUTE = 0.8;
+// After this long without new data the header says so in red, instead of showing a frozen picture as live
+const STALE_SEC = 30;
 // Slow swing around the plant: enough parallax to show depth, slow enough to read tags while it moves
 const SWAY = { yaw: 0.18, period: 90 };
 // What the corner camera circles while nothing is stopped
@@ -47,6 +51,37 @@ function startTV(mp) {
   scene.background = new THREE.Color(0x0d1317);
   scene.fog = null;
   plant.labels.visible = false;
+  muteScene();
+  setInterval(muteScene, 2000); // motors, pallets and trucks keep being added
+
+  // Desaturate every lit material and vertex-coloured mesh once. Unlit (toneMapped: false)
+  // materials are skipped: they are the status colours (tints, beacons, halos, stack lights).
+  function muteScene() {
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of [].concat(o.material)) {
+        if (!m?.color || m.toneMapped === false || m.userData.tvMuted) continue;
+        m.userData.tvMuted = true;
+        desaturate(m.color);
+      }
+      const c = o.geometry?.attributes?.color;
+      if (c && !o.geometry.userData.tvMuted) {
+        o.geometry.userData.tvMuted = true;
+        const col = new THREE.Color();
+        for (let i = 0; i < c.count; i++) {
+          desaturate(col.setRGB(c.getX(i), c.getY(i), c.getZ(i)));
+          c.setXYZ(i, col.r, col.g, col.b);
+        }
+        c.needsUpdate = true;
+      }
+    });
+  }
+  function desaturate(col) {
+    const l = 0.2126 * col.r + 0.7152 * col.g + 0.0722 * col.b;
+    col.r += (l - col.r) * MUTE;
+    col.g += (l - col.g) * MUTE;
+    col.b += (l - col.b) * MUTE;
+  }
   controls.enabled = false;
   camera.position.set(...VIEW.pos);
   controls.target.set(...VIEW.target);
@@ -65,7 +100,7 @@ function startTV(mp) {
     <header class="tv-top">
       <div class="tv-bar">
         <div class="tv-brand"><span class="tv-mark"></span><b>Motor Plant</b><span id="tv-shift"></span></div>
-        <div class="tv-clock"><span class="tv-live"><i></i>LIVE 3D TWIN</span><span id="tv-clock"></span></div>
+        <div class="tv-clock"><span class="tv-live" id="tv-live"><i></i><span id="tv-live-text">LIVE 3D TWIN</span></span><span id="tv-clock"></span></div>
       </div>
       <div class="tv-kpis">
         ${kpi('out', 'Shift output', 'motors')}${kpi('rate', 'Rate now', '/h')}${kpi('oee', 'OEE', '%')}${kpi('fpy', 'First-pass yield', '%')}
@@ -82,6 +117,7 @@ function startTV(mp) {
     </aside>
     <nav id="tv-ctl">
       <button type="button" data-act="stop">Stop a station</button>
+      <button type="button" data-act="freeze">Freeze data feed</button>
       <button type="button" data-act="full">Full screen</button>
       <a href="./motors.html">Exit TV view</a>
     </nav>`;
@@ -203,6 +239,7 @@ function startTV(mp) {
   }
 
   let lastAttn = '';
+  const feed = { simT: -1, at: performance.now() };
   function renderPanels() {
     const snap = snapshot();
     const shiftMin = clockMin() - SHIFT_START_MIN - shift.n * SHIFT_LEN;
@@ -210,6 +247,15 @@ function startTV(mp) {
     $('tv-shift').textContent = `Shift ${SHIFT_NAMES[((shift.n % 3) + 3) % 3]} · ${hhmm(start)}–${hhmm(start + SHIFT_LEN)}`;
     $('tv-clock').textContent = hhmm(clockMin());
     const early = shiftMin < 20;
+
+    // Data age: the twin's clock stands in for the plant feed; with a real MES this is the last message time
+    if (sim.time !== feed.simT) { feed.simT = sim.time; feed.at = performance.now(); }
+    const age = Math.floor((performance.now() - feed.at) / 1000);
+    const stale = age >= STALE_SEC;
+    $('tv-live').dataset.s = stale ? 'stale' : 'ok';
+    $('tv-live-text').textContent = stale
+      ? `NO DATA FOR ${age >= 120 ? `${Math.floor(age / 60)} MIN` : `${age} S`}`
+      : `LIVE 3D TWIN · ${age < 2 ? 'UPDATED NOW' : `DATA ${age} S OLD`}`;
 
     const built = sim.built - shift.base;
     const planNow = (PLAN_RATE * shiftMin) / 60;
@@ -410,6 +456,10 @@ function startTV(mp) {
     const st = ok[Math.floor(Math.random() * ok.length)];
     if (st) breakStation(st, 45, 'Manual stop (demo)');
     renderPanels();
+  });
+  root.querySelector('[data-act="freeze"]').addEventListener('click', (e) => {
+    sim.paused = !sim.paused;
+    e.target.textContent = sim.paused ? 'Resume data feed' : 'Freeze data feed';
   });
   root.querySelector('[data-act="full"]').addEventListener('click', async () => {
     try {

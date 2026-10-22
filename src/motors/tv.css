@@ -40,6 +40,8 @@ body.tv .panel, body.tv #feed, body.tv #toasts, body.tv #disclaimer { display: n
 .tv-clock { display: flex; align-items: center; gap: calc(var(--u) * 2); }
 .tv-live { display: flex; align-items: center; gap: calc(var(--u) * 0.9); font-size: calc(var(--u) * 2.2); letter-spacing: 0.12em; color: var(--tv-dim); font-weight: 600; }
 .tv-live i { width: calc(var(--u) * 1.3); height: calc(var(--u) * 1.3); border-radius: 50%; background: var(--tv-ok); animation: tv-blink 2s ease-in-out infinite; }
+.tv-live[data-s='stale'] { color: var(--tv-crit); }
+.tv-live[data-s='stale'] i { background: var(--tv-crit); animation: none; }
 #tv-clock { font-size: calc(var(--u) * 5.2); font-weight: 600; }
 
 .tv-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--u) * 1.8); min-height: 0; }
@@ -113,10 +115,10 @@ body.tv .panel, body.tv #feed, body.tv #toasts, body.tv #disclaimer { display: n
 }
 .tv-tag b { display: block; font-size: calc(var(--u) * 2.6); font-weight: 600; }
 .tv-tag span { display: block; font-size: calc(var(--u) * 2.1); color: var(--tv-dim); }
-.tv-tag[data-s='crit'] { background: var(--tv-crit); border-color: var(--tv-crit); color: #fff; padding: calc(var(--u) * 0.8) calc(var(--u) * 1.6); }
+.tv-tag[data-s='crit'] { z-index: 3; background: var(--tv-crit); border-color: var(--tv-crit); color: #fff; padding: calc(var(--u) * 0.8) calc(var(--u) * 1.6); }
 .tv-tag[data-s='crit'] b { font-size: calc(var(--u) * 3.2); }
 .tv-tag[data-s='crit'] span { color: #fff; font-size: calc(var(--u) * 2.5); font-weight: 600; }
-.tv-tag[data-s='warn'] { background: var(--tv-warn); border-color: var(--tv-warn); color: #1d1405; }
+.tv-tag[data-s='warn'] { z-index: 2; background: var(--tv-warn); border-color: var(--tv-warn); color: #1d1405; }
 .tv-tag[data-s='warn'] span { color: #1d1405; font-weight: 600; }
 
 /* ---------- live close-up of the worst stoppage ---------- */

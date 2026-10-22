@@ -119,9 +119,12 @@ question: are we on plan right now, and if not, where is the problem?
 
 - **Top band:** shift output against plan so far, the current rate, OEE and first-pass yield, each
   with an OK / Behind / Low chip.
+- **Data age** next to the clock (*LIVE 3D TWIN · UPDATED NOW*). If no new data arrives for 30 s it
+  turns red (*NO DATA FOR 45 S*), so a frozen screen is never mistaken for a live one.
 - **3D plant, bird's-eye view:** areas stay as they are while running. A stopped station turns
   its area red with a pulsing beacon and a red tag naming the station; AI alerts and maintenance
-  turn it amber. The camera swings slowly (about 10° either way over 90 s) so the view reads as
+  turn it amber. The plant itself is drawn almost grey (ISA-101 style), so red and amber are the
+  only strong colours on screen. The camera swings slowly (about 10° either way over 90 s) so the view reads as
   live 3D rather than a floor plan; add `&still` to the URL to hold it fixed.
 - **Live 3D camera (corner):** while nothing is stopped it circles one showcase machine after
   another (Vision QC, VPI, press, run test) under a blue *LIVE 3D* header. When a station stops it
